@@ -71,9 +71,12 @@ class RecipeModel(Base):
     text = Column(Text)
     pub_date = Column(DateTime, default=datetime.utcnow)
     author_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'))  # TODO: rename to author!
-    ingredients = relationship('AmountModel', back_populates='recipe')
-    tags = relationship(
-        'TagModel', secondary=recipe_tag_association, back_populates='recipes')
+    ingredients = relationship(
+        'AmountModel', back_populates='recipe', lazy='selectin')
+    tags = relationship('TagModel',
+                        secondary=recipe_tag_association,
+                        back_populates='recipes',
+                        lazy='selectin')
     cooking_time = Column(SmallInteger, CheckConstraint(
         'cooking_time > 0', name='check_positive_cooking_time'))
     image = Column(String)  # TODO: Store the image path or reference 'recipes/images/')

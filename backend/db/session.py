@@ -5,7 +5,10 @@ from settings import POSTGRES_URL
 
 engine = create_async_engine(POSTGRES_URL)
 AsyncSessionLocal = sessionmaker(
-    bind=engine, class_=AsyncSession, expire_on_commit=False
+    bind=engine,
+    class_=AsyncSession,
+    autoflush=False,
+    expire_on_commit=False
 )
 
 

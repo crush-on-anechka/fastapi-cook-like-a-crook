@@ -1,4 +1,5 @@
-from pydantic import BaseModel, ValidationError, field_validator, ValidationInfo
+from pydantic import (BaseModel, ValidationError, ValidationInfo,
+                      field_validator)
 
 # class CustomModel(BaseModel):
 #     model_config = ConfigDict(from_attributes=True)

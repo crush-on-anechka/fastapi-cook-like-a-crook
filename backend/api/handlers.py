@@ -1,15 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
-from fastapi.responses import JSONResponse
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 from datetime import datetime
 
-from db.models import IngredientModel, RecipeModel, TagModel, AmountModel, IngredientModel
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi.responses import JSONResponse
+from sqlalchemy import and_, delete
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+
+from db.models import (AmountModel, IngredientModel, RecipeModel, TagModel,
+                       recipe_tag_association)
 from db.schemas import IngredientSchema, RecipeSchema, TagSchema
 from db.session import get_async_session
 from settings import PAGE_LIMIT
 
-from .dals import get_recipes_from_db, get_single_recipe_from_db
+from .dals import (get_amount, get_recipes_from_db, get_single_recipe_from_db,
+                   recipe_tag_association_exists)
 from .serializers import (serialize_ingredient, serialize_ingredients_list,
                           serialize_recipe, serialize_recipes_list,
                           serialize_tag, serialize_tags_list)
@@ -100,6 +104,115 @@ async def get_recipes_list(
         content=recipes_data, status_code=status.HTTP_200_OK)
 
 
+class RecipeUtility:
+    @staticmethod
+    async def _update_ingredients(
+        cur_recipe: RecipeModel,
+        recipe_data: RecipeSchema,
+            session: AsyncSession):
+        ingredients_data = recipe_data.get('ingredients', [])
+        ingredient_ids = [i['id'] for i in ingredients_data]
+
+        ingredients = await session.execute(
+            select(IngredientModel)
+            .where(IngredientModel.id.in_(ingredient_ids))
+        )
+
+        ingredient_dict = {i.id: i for i in ingredients.scalars()}
+
+        for ingredient_data in ingredients_data:
+            ingredient_id = ingredient_data['id']
+            new_amount = ingredient_data['amount']
+
+            current_amount = await get_amount(
+                session, cur_recipe.id, ingredient_id)
+            if current_amount:
+                current_amount.amount = new_amount
+                continue
+
+            ingredient = ingredient_dict.get(ingredient_id)
+            if not ingredient:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f'Ingredient with ID {ingredient_id} not found')
+
+            cur_recipe.ingredients.append(
+                AmountModel(amount=new_amount, ingredient=ingredient))
+
+        await session.execute(
+            delete(AmountModel)
+            .where(and_(~AmountModel.ingredient_id.in_(ingredient_ids),
+                        AmountModel.recipe_id == cur_recipe.id))
+        )
+        await session.refresh(cur_recipe)
+        await session.commit()
+
+    @staticmethod
+    async def _update_tags(
+        cur_recipe: RecipeModel,
+        recipe_data: RecipeSchema,
+            session: AsyncSession):
+        tag_ids = recipe_data.get('tags', [])
+        tags = await session.execute(
+            select(TagModel).where(TagModel.id.in_(tag_ids)))
+        tag_dict = {tag.id: tag for tag in tags.scalars()}
+
+        for tag_id in tag_ids:
+
+            if await recipe_tag_association_exists(
+                    session, tag_id, cur_recipe.id):
+                continue
+
+            tag = tag_dict.get(tag_id)
+            if not tag:
+                raise HTTPException(
+                    status_code=404, detail=f'Tag with ID {tag_id} not found')
+
+            cur_recipe.tags.append(tag)
+
+        await session.execute(
+            delete(recipe_tag_association)
+            .where(and_(~recipe_tag_association.c.tag_id.in_(tag_ids),
+                        recipe_tag_association.c.recipe_id == cur_recipe.id))
+        )
+        await session.refresh(cur_recipe)
+        await session.commit()
+
+    @staticmethod
+    async def get_existing_recipe(
+            recipe_id: int, session: AsyncSession) -> RecipeModel:
+        existing_recipe = await session.execute(
+            select(RecipeModel).where(RecipeModel.id == recipe_id))
+
+        existing_recipe = existing_recipe.scalar()
+
+        if not existing_recipe:
+            raise HTTPException(
+                status_code=404,
+                detail=f'Recipe with id {recipe_id} not found'
+            )
+
+        return existing_recipe
+
+    @staticmethod
+    async def update_recipe_fields(
+        cur_recipe: RecipeModel,
+        recipe_data: RecipeSchema,
+            session: AsyncSession):
+        cur_recipe.name = recipe_data.get('name')
+        cur_recipe.text = recipe_data.get('text')
+        cur_recipe.cooking_time = recipe_data.get('cooking_time')
+        cur_recipe.image = recipe_data.get('image')
+
+        await RecipeUtility._update_ingredients(
+            cur_recipe, recipe_data, session)
+
+        await RecipeUtility._update_tags(
+            cur_recipe, recipe_data, session)
+
+        await session.commit()
+
+
 @router.post('/recipes', response_model=RecipeSchema)
 async def create_recipe(
     recipe_data: dict,
@@ -107,60 +220,42 @@ async def create_recipe(
     session: AsyncSession = Depends(get_async_session)
         ) -> JSONResponse:
 
-    new_recipe = RecipeModel(   
-        name=recipe_data.get('name'),
-        text=recipe_data.get('text'),
-        cooking_time=recipe_data.get('cooking_time'),
-        image=recipe_data.get('image'),
+    new_recipe = RecipeModel(
         author_id=current_user_id,
-        pub_date=datetime.utcnow(),
+        pub_date=datetime.utcnow()
     )
 
-    ingredients_data = recipe_data.get('ingredients', [])
-
-    ingredient_ids = [i['id'] for i in ingredients_data]
-    ingredients = await session.execute(
-        select(IngredientModel).where(IngredientModel.id.in_(ingredient_ids)))
-    ingredient_dict = {i.id: i for i in ingredients.scalars()}
-
-    for ingredient_data in ingredients_data:
-        ingredient_id = ingredient_data['id']
-        amount = ingredient_data['amount']
-
-        ingredient = ingredient_dict.get(ingredient_id)
-        if not ingredient:
-            raise HTTPException(
-                status_code=404,
-                detail=f'Ingredient with ID {ingredient_id} not found')
-
-        new_recipe.ingredients.append(
-            AmountModel(amount=amount, ingredient=ingredient))
-
-    tags_data = recipe_data.get('tags', [])
-    tags = await session.execute(
-        select(TagModel).where(TagModel.id.in_(tags_data)))
-    tag_dict = {tag.id: tag for tag in tags.scalars()}
-
-    for tag_id in tags_data:
-        tag = tag_dict.get(tag_id)
-        if not tag:
-            raise HTTPException(
-                status_code=404, detail=f'Tag with ID {tag_id} not found')
-
-        new_recipe.tags.append(tag)
-
-    session.add(new_recipe)
-    await session.flush()
+    await RecipeUtility.update_recipe_fields(new_recipe, recipe_data, session)
 
     created_recipe = await get_single_recipe_from_db(
         new_recipe.id, session, current_user_id)
 
     recipe_data: dict = await serialize_recipe(*created_recipe)
 
-    await session.commit()
-
     return JSONResponse(
         content=recipe_data, status_code=status.HTTP_201_CREATED)
+
+
+@router.patch('/recipes/{id}', response_model=RecipeSchema)
+async def update_recipe(
+    recipe_data: dict,
+    id: int = Path(..., title='Recipe ID'),
+    current_user_id: int = Depends(get_current_user_id),
+    session: AsyncSession = Depends(get_async_session)
+        ) -> JSONResponse:
+
+    target_recipe = await RecipeUtility.get_existing_recipe(id, session)
+
+    await RecipeUtility.update_recipe_fields(
+        target_recipe, recipe_data, session)
+
+    updated_recipe = await get_single_recipe_from_db(
+        target_recipe.id, session, current_user_id)
+
+    recipe_data: dict = await serialize_recipe(*updated_recipe)
+
+    return JSONResponse(
+        content=recipe_data, status_code=status.HTTP_200_OK)
 
 
 @router.get('/recipes/{id}', response_model=RecipeSchema)
@@ -181,6 +276,7 @@ async def get_recipe_by_id(id: int = Path(..., title='Tag ID'),
 
     return JSONResponse(
         content=recipe_data, status_code=status.HTTP_200_OK)
+
 
 
 

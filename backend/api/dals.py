@@ -1,8 +1,35 @@
+from typing import Optional
+
 from sqlalchemy import and_, case, exists, literal, select
 from sqlalchemy.orm import selectinload
 
+from db.models import (AmountModel, RecipeModel, TagModel, UserModel, favorite,
+                       recipe_tag_association, shopping_cart)
+
 from .utils import BoolOptions
-from db.models import RecipeModel, UserModel, favorite, shopping_cart, TagModel
+
+
+async def get_amount(
+        session, recipe_id, ingredient_id) -> Optional[AmountModel]:
+    query = select(AmountModel).where(and_(
+        AmountModel.recipe_id == recipe_id,
+        AmountModel.ingredient_id == ingredient_id
+    ))
+    result = await session.execute(query)
+    amount_instance = result.scalar()
+
+    return amount_instance
+
+
+async def recipe_tag_association_exists(session, tag_id, recipe_id) -> bool:
+    query = select(recipe_tag_association).where(and_(
+        recipe_tag_association.c.tag_id == tag_id,
+        recipe_tag_association.c.recipe_id == recipe_id
+    ))
+    result = await session.execute(query)
+    tag_instance = result.scalar()
+
+    return tag_instance is not None
 
 
 async def get_recipes_from_db(
