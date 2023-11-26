@@ -2,7 +2,6 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from fastapi.responses import JSONResponse
-from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from starlette.responses import Response
@@ -210,8 +209,8 @@ class RecipeUtility:
         )
         await session.commit()
 
-        await delete_amounts(cur_recipe, ingredient_ids, session, invert=True)
-        await delete_tags(cur_recipe, tag_ids, session, invert=True)
+        await delete_amounts(cur_recipe, ingredient_ids, session, orphan=True)
+        await delete_tags(cur_recipe, tag_ids, session, orphan=True)
 
         await session.refresh(cur_recipe)
         await session.commit()
@@ -285,7 +284,7 @@ async def get_recipe_by_id(id: int = Path(..., title='Tag ID'),
         content=recipe_data, status_code=status.HTTP_200_OK)
 
 
-@router.delete('/recipes/{id}', response_model=RecipeSchema)
+@router.delete('/recipes/{id}')
 async def delete_recipe(
     id: int = Path(..., title='Recipe ID'),
     current_user_id: int = Depends(get_current_user_id),
@@ -294,15 +293,10 @@ async def delete_recipe(
 
     cur_recipe = await get_recipe_or_404(id, session)
 
-    await session.execute(
-        delete(RecipeModel).where(RecipeModel.id == id))
+    for amount in cur_recipe.ingredients:
+        await session.delete(amount)
 
-    ingredient_ids = [i.ingredient_id for i in cur_recipe.ingredients]
-    tag_ids = [i.id for i in cur_recipe.tags]
-
-    await delete_amounts(cur_recipe, ingredient_ids, session)
-    await delete_tags(cur_recipe, tag_ids, session)
-
+    await session.delete(cur_recipe)
     await session.commit()
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)

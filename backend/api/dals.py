@@ -54,9 +54,9 @@ async def delete_amounts(
     cur_recipe: RecipeModel,
     ingredient_ids: list[str],
     session: AsyncSession,
-        invert: bool = False) -> None:
+        orphan: bool = False) -> None:
     ingredient_condition = AmountModel.ingredient_id.in_(ingredient_ids)
-    if invert:
+    if orphan:
         ingredient_condition = ~AmountModel.ingredient_id.in_(
             ingredient_ids)
 
@@ -71,9 +71,9 @@ async def delete_tags(
     cur_recipe: RecipeModel,
     tag_ids: list[str],
     session: AsyncSession,
-        invert: bool = False) -> None:
+        orphan: bool = False) -> None:
     tag_condition = recipe_tag_association.c.tag_id.in_(tag_ids)
-    if invert:
+    if orphan:
         tag_condition = ~recipe_tag_association.c.tag_id.in_(tag_ids)
 
     await session.execute(
