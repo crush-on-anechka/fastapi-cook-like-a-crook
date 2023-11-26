@@ -6,17 +6,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from starlette.responses import Response
 
-from db.models import AmountModel, IngredientModel, RecipeModel, TagModel
-from db.schemas import IngredientSchema, RecipeSchema, TagSchema
+from db.models import (AmountModel, IngredientModel, RecipeModel, TagModel,
+                       favorite)
+from db.schemas import (FavoriteSchema, IngredientSchema, RecipeSchema,
+                        TagSchema)
 from db.session import get_async_session
 from settings import PAGE_LIMIT
 
 from .dals import (delete_amounts, delete_tags, get_amount, get_recipe_or_404,
                    get_recipes_from_db, get_single_recipe_from_db,
-                   recipe_tag_association_exists)
-from .serializers import (serialize_ingredient, serialize_ingredients_list,
-                          serialize_recipe, serialize_recipes_list,
-                          serialize_tag, serialize_tags_list)
+                   is_recipe_in_favorite, recipe_tag_association_exists)
+from .serializers import (serialize_favorite, serialize_ingredient,
+                          serialize_ingredients_list, serialize_recipe,
+                          serialize_recipes_list, serialize_tag,
+                          serialize_tags_list)
 from .utils import BoolOptions, get_current_user_id
 
 router = APIRouter()
@@ -100,8 +103,7 @@ async def get_recipes_list(
 
     recipes_data = await serialize_recipes_list(recipes)
 
-    return JSONResponse(
-        content=recipes_data, status_code=status.HTTP_200_OK)
+    return JSONResponse(content=recipes_data, status_code=status.HTTP_200_OK)
 
 
 class RecipeUtility:
@@ -132,7 +134,7 @@ class RecipeUtility:
             ingredient = ingredient_dict.get(ingredient_id)
             if not ingredient:
                 raise HTTPException(
-                    status_code=404,
+                    status_code=status.HTTP_404_NOT_FOUND,
                     detail=f'Ingredient with ID {ingredient_id} not found')
 
             cur_recipe.ingredients.append(
@@ -157,8 +159,9 @@ class RecipeUtility:
             tag = tag_dict.get(tag_id)
             if not tag:
                 raise HTTPException(
-                    status_code=404, detail=f'Tag with ID {tag_id} not found')
-
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f'Tag with ID {tag_id} not found'
+                )
             cur_recipe.tags.append(tag)
 
     @staticmethod
@@ -250,7 +253,7 @@ async def update_recipe(
     session: AsyncSession = Depends(get_async_session)
         ) -> JSONResponse:
 
-    target_recipe = await get_recipe_or_404(id, session)
+    target_recipe: RecipeModel = await get_recipe_or_404(id, session)
 
     await RecipeUtility.perform_update_recipe(
         target_recipe, recipe_data, session)
@@ -260,8 +263,7 @@ async def update_recipe(
 
     recipe_data: dict = await serialize_recipe(*updated_recipe)
 
-    return JSONResponse(
-        content=recipe_data, status_code=status.HTTP_200_OK)
+    return JSONResponse(content=recipe_data, status_code=status.HTTP_200_OK)
 
 
 @router.get('/recipes/{id}', response_model=RecipeSchema)
@@ -280,8 +282,7 @@ async def get_recipe_by_id(id: int = Path(..., title='Tag ID'),
 
     recipe_data: dict = await serialize_recipe(*recipe_with_user)
 
-    return JSONResponse(
-        content=recipe_data, status_code=status.HTTP_200_OK)
+    return JSONResponse(content=recipe_data, status_code=status.HTTP_200_OK)
 
 
 @router.delete('/recipes/{id}')
@@ -291,7 +292,7 @@ async def delete_recipe(
     session: AsyncSession = Depends(get_async_session)
         ) -> Response:
 
-    cur_recipe = await get_recipe_or_404(id, session)
+    cur_recipe: RecipeModel = await get_recipe_or_404(id, session)
 
     for amount in cur_recipe.ingredients:
         await session.delete(amount)
@@ -300,6 +301,31 @@ async def delete_recipe(
     await session.commit()
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post('/recipes/{id}/favorite', response_model=FavoriteSchema)
+async def add_to_favorite(
+    id: int = Path(..., title='Recipe ID'),
+    current_user_id: int = Depends(get_current_user_id),
+        session: AsyncSession = Depends(get_async_session)) -> JSONResponse:
+
+    if await is_recipe_in_favorite(session, current_user_id, id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f'Recipe with id {id} is already in favorite'
+        )
+
+    await session.execute(favorite.insert().values(
+        user_id=current_user_id, recipe_id=id))
+    await session.commit()
+
+    cur_recipe: RecipeModel = await get_recipe_or_404(id, session)
+
+    recipe_data: dict = serialize_favorite(cur_recipe)
+
+    return JSONResponse(content=recipe_data, status_code=status.HTTP_200_OK)
+
+
 
 # class PaginationMixin:
 

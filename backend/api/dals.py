@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import HTTPException
+from fastapi import HTTPException, status
 from sqlalchemy import and_, case, delete, exists, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -34,6 +34,17 @@ async def recipe_tag_association_exists(session, tag_id, recipe_id) -> bool:
     return tag_instance is not None
 
 
+async def is_recipe_in_favorite(session, user_id, recipe_id) -> bool:
+    query = select(favorite).where(and_(
+        favorite.c.user_id == user_id,
+        favorite.c.recipe_id == recipe_id
+    ))
+    result = await session.execute(query)
+    favorite_instance = result.scalar()
+
+    return favorite_instance is not None
+
+
 async def get_recipe_or_404(
         recipe_id: int, session: AsyncSession) -> RecipeModel:
     existing_recipe = await session.execute(
@@ -43,7 +54,7 @@ async def get_recipe_or_404(
 
     if not existing_recipe:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail=f'Recipe with id {recipe_id} not found'
         )
 

@@ -47,6 +47,14 @@ class RecipeSchema(BaseModel):
             raise ValueError(f'Required field: {info.field_name}')
         return value
 
+
+class FavoriteSchema(BaseModel):
+    id: int
+    name: str
+    image: str
+    cooking_time: int
+
+
 # class RecipePaginationSchema(BaseModel):
 #     count: int
 #     next: str

@@ -1,7 +1,8 @@
 from pydantic import ValidationError
 
-from db.schemas import (IngredientSchema, IngredientWithAmountSchema,
-                        RecipeSchema, TagSchema, UserSchema)
+from db.schemas import (FavoriteSchema, IngredientSchema,
+                        IngredientWithAmountSchema, RecipeSchema, TagSchema,
+                        UserSchema)
 
 from .utils import handle_validation_error
 
@@ -24,6 +25,16 @@ def serialize_tag(tag) -> dict:
             err, 'Validation error while processing the tag data')
 
     return tag_data
+
+
+def serialize_favorite(recipe) -> dict:
+    try:
+        recipe_data = FavoriteSchema(**recipe.__dict__).dict()
+    except ValidationError as err:
+        handle_validation_error(
+            err, 'Validation error while processing the favorited recipe data')
+
+    return recipe_data
 
 
 def serialize_ingredients_list(ingredients) -> list[dict]:
