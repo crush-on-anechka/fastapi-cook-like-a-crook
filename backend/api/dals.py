@@ -1,6 +1,8 @@
 from typing import Optional
 
-from sqlalchemy import and_, case, exists, literal, select
+from fastapi import HTTPException
+from sqlalchemy import and_, case, delete, exists, literal, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from db.models import (AmountModel, RecipeModel, TagModel, UserModel, favorite,
@@ -30,6 +32,55 @@ async def recipe_tag_association_exists(session, tag_id, recipe_id) -> bool:
     tag_instance = result.scalar()
 
     return tag_instance is not None
+
+
+async def get_recipe_or_404(
+        recipe_id: int, session: AsyncSession) -> RecipeModel:
+    existing_recipe = await session.execute(
+        select(RecipeModel).where(RecipeModel.id == recipe_id))
+
+    existing_recipe = existing_recipe.scalar()
+
+    if not existing_recipe:
+        raise HTTPException(
+            status_code=404,
+            detail=f'Recipe with id {recipe_id} not found'
+        )
+
+    return existing_recipe
+
+
+async def delete_amounts(
+    cur_recipe: RecipeModel,
+    ingredient_ids: list[str],
+    session: AsyncSession,
+        invert: bool = False) -> None:
+    ingredient_condition = AmountModel.ingredient_id.in_(ingredient_ids)
+    if invert:
+        ingredient_condition = ~AmountModel.ingredient_id.in_(
+            ingredient_ids)
+
+    await session.execute(
+        delete(AmountModel)
+        .where(and_(ingredient_condition,
+                    AmountModel.recipe_id == cur_recipe.id))
+    )
+
+
+async def delete_tags(
+    cur_recipe: RecipeModel,
+    tag_ids: list[str],
+    session: AsyncSession,
+        invert: bool = False) -> None:
+    tag_condition = recipe_tag_association.c.tag_id.in_(tag_ids)
+    if invert:
+        tag_condition = ~recipe_tag_association.c.tag_id.in_(tag_ids)
+
+    await session.execute(
+        delete(recipe_tag_association)
+        .where(and_(tag_condition,
+                    recipe_tag_association.c.recipe_id == cur_recipe.id))
+    )
 
 
 async def get_recipes_from_db(
