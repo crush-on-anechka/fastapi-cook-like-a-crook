@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import and_, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from starlette.responses import Response
 
 from db.models import (AmountModel, IngredientModel, RecipeModel, TagModel,
                        recipe_tag_association)
@@ -106,13 +107,12 @@ async def get_recipes_list(
 
 class RecipeUtility:
     @staticmethod
-    async def _update_ingredients(
+    async def _add_or_update_ingredients(
+        ingredients_data,
+        ingredient_ids: list[str],
         cur_recipe: RecipeModel,
         recipe_data: RecipeSchema,
             session: AsyncSession):
-        ingredients_data = recipe_data.get('ingredients', [])
-        ingredient_ids = [i['id'] for i in ingredients_data]
-
         ingredients = await session.execute(
             select(IngredientModel)
             .where(IngredientModel.id.in_(ingredient_ids))
@@ -139,20 +139,12 @@ class RecipeUtility:
             cur_recipe.ingredients.append(
                 AmountModel(amount=new_amount, ingredient=ingredient))
 
-        await session.execute(
-            delete(AmountModel)
-            .where(and_(~AmountModel.ingredient_id.in_(ingredient_ids),
-                        AmountModel.recipe_id == cur_recipe.id))
-        )
-        await session.refresh(cur_recipe)
-        await session.commit()
-
     @staticmethod
-    async def _update_tags(
+    async def _add_or_update_tags(
+        tag_ids: list[str],
         cur_recipe: RecipeModel,
         recipe_data: RecipeSchema,
             session: AsyncSession):
-        tag_ids = recipe_data.get('tags', [])
         tags = await session.execute(
             select(TagModel).where(TagModel.id.in_(tag_ids)))
         tag_dict = {tag.id: tag for tag in tags.scalars()}
@@ -170,15 +162,7 @@ class RecipeUtility:
 
             cur_recipe.tags.append(tag)
 
-        await session.execute(
-            delete(recipe_tag_association)
-            .where(and_(~recipe_tag_association.c.tag_id.in_(tag_ids),
-                        recipe_tag_association.c.recipe_id == cur_recipe.id))
-        )
-        await session.refresh(cur_recipe)
-        await session.commit()
-
-    @staticmethod
+    @staticmethod  # move to DALS
     async def get_existing_recipe(
             recipe_id: int, session: AsyncSession) -> RecipeModel:
         existing_recipe = await session.execute(
@@ -195,21 +179,93 @@ class RecipeUtility:
         return existing_recipe
 
     @staticmethod
-    async def update_recipe_fields(
+    async def _update_recipe_fields(
         cur_recipe: RecipeModel,
         recipe_data: RecipeSchema,
+        ingredients_data,
+        ingredient_ids,
+        tag_ids,
             session: AsyncSession):
         cur_recipe.name = recipe_data.get('name')
         cur_recipe.text = recipe_data.get('text')
         cur_recipe.cooking_time = recipe_data.get('cooking_time')
         cur_recipe.image = recipe_data.get('image')
 
-        await RecipeUtility._update_ingredients(
-            cur_recipe, recipe_data, session)
+        await RecipeUtility._add_or_update_ingredients(
+            ingredients_data, ingredient_ids, cur_recipe, recipe_data, session)
 
-        await RecipeUtility._update_tags(
-            cur_recipe, recipe_data, session)
+        await RecipeUtility._add_or_update_tags(
+            tag_ids, cur_recipe, recipe_data, session)
 
+    @staticmethod  # move to DALS
+    async def delete_amounts(
+        cur_recipe: RecipeModel,
+        ingredient_ids: list[str],
+        session: AsyncSession,
+            invert: bool = False) -> None:
+        ingredient_condition = AmountModel.ingredient_id.in_(ingredient_ids)
+        if invert:
+            ingredient_condition = ~AmountModel.ingredient_id.in_(
+                ingredient_ids)
+
+        await session.execute(
+            delete(AmountModel)
+            .where(and_(ingredient_condition,
+                        AmountModel.recipe_id == cur_recipe.id))
+        )
+
+    @staticmethod  # move to DALS
+    async def delete_tags(
+        cur_recipe: RecipeModel,
+        tag_ids: list[str],
+        session: AsyncSession,
+            invert: bool = False) -> None:
+        tag_condition = recipe_tag_association.c.tag_id.in_(tag_ids)
+        if invert:
+            tag_condition = ~recipe_tag_association.c.tag_id.in_(tag_ids)
+
+        await session.execute(
+            delete(recipe_tag_association)
+            .where(and_(tag_condition,
+                        recipe_tag_association.c.recipe_id == cur_recipe.id))
+        )
+
+    @staticmethod
+    async def perform_create_recipe(
+        cur_recipe: RecipeModel,
+        recipe_data: RecipeSchema,
+            session: AsyncSession):
+        ingredients_data = recipe_data.get('ingredients', [])
+        ingredient_ids = [i['id'] for i in ingredients_data]
+        tag_ids = recipe_data.get('tags', [])
+
+        await RecipeUtility._update_recipe_fields(
+            cur_recipe, recipe_data, ingredients_data,
+            ingredient_ids, tag_ids, session
+        )
+
+    @staticmethod
+    async def perform_update_recipe(
+        cur_recipe: RecipeModel,
+        recipe_data: RecipeSchema,
+            session: AsyncSession):
+        ingredients_data = recipe_data.get('ingredients', [])
+        ingredient_ids = [i['id'] for i in ingredients_data]
+        tag_ids = recipe_data.get('tags', [])
+
+        await RecipeUtility._update_recipe_fields(
+            cur_recipe, recipe_data, ingredients_data,
+            ingredient_ids, tag_ids, session
+        )
+        await session.commit()
+
+        await RecipeUtility.delete_amounts(
+            cur_recipe, ingredient_ids, session, invert=True)
+
+        await RecipeUtility.delete_tags(
+            cur_recipe, tag_ids, session, invert=True)
+
+        await session.refresh(cur_recipe)
         await session.commit()
 
 
@@ -225,7 +281,10 @@ async def create_recipe(
         pub_date=datetime.utcnow()
     )
 
-    await RecipeUtility.update_recipe_fields(new_recipe, recipe_data, session)
+    await RecipeUtility.perform_create_recipe(new_recipe, recipe_data, session)
+
+    session.add(new_recipe)
+    await session.commit()
 
     created_recipe = await get_single_recipe_from_db(
         new_recipe.id, session, current_user_id)
@@ -246,7 +305,7 @@ async def update_recipe(
 
     target_recipe = await RecipeUtility.get_existing_recipe(id, session)
 
-    await RecipeUtility.update_recipe_fields(
+    await RecipeUtility.perform_update_recipe(
         target_recipe, recipe_data, session)
 
     updated_recipe = await get_single_recipe_from_db(
@@ -278,7 +337,27 @@ async def get_recipe_by_id(id: int = Path(..., title='Tag ID'),
         content=recipe_data, status_code=status.HTTP_200_OK)
 
 
+@router.delete('/recipes/{id}', response_model=RecipeSchema)
+async def delete_recipe(
+    id: int = Path(..., title='Recipe ID'),
+    current_user_id: int = Depends(get_current_user_id),
+    session: AsyncSession = Depends(get_async_session)
+        ) -> Response:
 
+    cur_recipe = await RecipeUtility.get_existing_recipe(id, session)
+
+    await session.execute(
+        delete(RecipeModel).where(RecipeModel.id == id))
+
+    ingredient_ids = [i.ingredient_id for i in cur_recipe.ingredients]
+    tag_ids = [i.id for i in cur_recipe.tags]
+
+    await RecipeUtility.delete_amounts(cur_recipe, ingredient_ids, session)
+    await RecipeUtility.delete_tags(cur_recipe, tag_ids, session)
+
+    await session.commit()
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 # class PaginationMixin:
 
