@@ -2,6 +2,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from fastapi.responses import JSONResponse
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from starlette.responses import Response
@@ -23,87 +24,6 @@ from .serializers import (serialize_favorite, serialize_ingredient,
 from .utils import BoolOptions, get_current_user_id
 
 router = APIRouter()
-
-
-@router.get('/tags', response_model=list[TagSchema])
-async def get_tags_list(
-        session: AsyncSession = Depends(get_async_session)) -> JSONResponse:
-    tags_result = await session.execute(select(TagModel))
-    tags = tags_result.scalars().all()
-    tags_data: list[dict] = serialize_tags_list(tags)
-
-    return JSONResponse(content=tags_data, status_code=status.HTTP_200_OK)
-
-
-@router.get('/tags/{id}', response_model=TagSchema)
-async def get_tag_by_id(id: int = Path(..., title='Tag ID'),
-                        session: AsyncSession = Depends(get_async_session)
-                        ) -> JSONResponse:
-    tag_result = await session.execute(select(TagModel).filter_by(id=id))
-    tag = tag_result.scalar()
-
-    if tag is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f'Tag with ID {id} not found'
-        )
-
-    tag_data: dict = serialize_tag(tag)
-
-    return JSONResponse(content=tag_data, status_code=status.HTTP_200_OK)
-
-
-@router.get('/ingredients', response_model=list[IngredientSchema])
-async def get_ingredients_list(
-        session: AsyncSession = Depends(get_async_session)) -> JSONResponse:
-    ingredients_result = await session.execute(select(IngredientModel))
-    ingredients = ingredients_result.scalars().all()
-    ingredients_data: list[dict] = serialize_ingredients_list(ingredients)
-
-    return JSONResponse(
-        content=ingredients_data, status_code=status.HTTP_200_OK)
-
-
-@router.get('/ingredients/{id}', response_model=IngredientSchema)
-async def get_ingredient_by_id(
-    id: int = Path(..., title='Ingredient ID'),
-        session: AsyncSession = Depends(get_async_session)) -> JSONResponse:
-    ingredient_result = await session.execute(
-        select(IngredientModel).filter_by(id=id))
-    ingredient = ingredient_result.scalar()
-
-    if ingredient is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f'Ingredient with ID {id} not found'
-        )
-
-    ingredient_data: dict = serialize_ingredient(ingredient)
-
-    return JSONResponse(
-        content=ingredient_data, status_code=status.HTTP_200_OK)
-
-
-@router.get('/recipes', response_model=list[RecipeSchema])
-async def get_recipes_list(
-    current_user_id: int = Depends(get_current_user_id),
-    author: int = Query(None, title='Author'),
-    tags: list[str] = Query(None, title='Tags'),
-    is_favorited: BoolOptions = Query(
-        BoolOptions.false, title='Is favorited'),
-    is_in_shopping_cart: BoolOptions = Query(
-        BoolOptions.false, title='Is in shopping cart'),
-    session: AsyncSession = Depends(get_async_session)
-        ) -> JSONResponse:
-    recipes = await get_recipes_from_db(
-        session, current_user_id,
-        author, tags,
-        is_favorited, is_in_shopping_cart
-    )
-
-    recipes_data = await serialize_recipes_list(recipes)
-
-    return JSONResponse(content=recipes_data, status_code=status.HTTP_200_OK)
 
 
 class RecipeUtility:
@@ -210,13 +130,93 @@ class RecipeUtility:
             cur_recipe, recipe_data, ingredients_data,
             ingredient_ids, tag_ids, session
         )
-        await session.commit()
+        await session.flush()
 
         await delete_amounts(cur_recipe, ingredient_ids, session, orphan=True)
         await delete_tags(cur_recipe, tag_ids, session, orphan=True)
 
-        await session.refresh(cur_recipe)
         await session.commit()
+
+
+@router.get('/tags', response_model=list[TagSchema])
+async def get_tags_list(
+        session: AsyncSession = Depends(get_async_session)) -> JSONResponse:
+    tags_result = await session.execute(select(TagModel))
+    tags = tags_result.scalars().all()
+    tags_data: list[dict] = serialize_tags_list(tags)
+
+    return JSONResponse(content=tags_data, status_code=status.HTTP_200_OK)
+
+
+@router.get('/tags/{id}', response_model=TagSchema)
+async def get_tag_by_id(id: int = Path(..., title='Tag ID'),
+                        session: AsyncSession = Depends(get_async_session)
+                        ) -> JSONResponse:
+    tag_result = await session.execute(select(TagModel).filter_by(id=id))
+    tag = tag_result.scalar()
+
+    if tag is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f'Tag with ID {id} not found'
+        )
+
+    tag_data: dict = serialize_tag(tag)
+
+    return JSONResponse(content=tag_data, status_code=status.HTTP_200_OK)
+
+
+@router.get('/ingredients', response_model=list[IngredientSchema])
+async def get_ingredients_list(
+        session: AsyncSession = Depends(get_async_session)) -> JSONResponse:
+    ingredients_result = await session.execute(select(IngredientModel))
+    ingredients = ingredients_result.scalars().all()
+    ingredients_data: list[dict] = serialize_ingredients_list(ingredients)
+
+    return JSONResponse(
+        content=ingredients_data, status_code=status.HTTP_200_OK)
+
+
+@router.get('/ingredients/{id}', response_model=IngredientSchema)
+async def get_ingredient_by_id(
+    id: int = Path(..., title='Ingredient ID'),
+        session: AsyncSession = Depends(get_async_session)) -> JSONResponse:
+    ingredient_result = await session.execute(
+        select(IngredientModel).filter_by(id=id))
+    ingredient = ingredient_result.scalar()
+
+    if ingredient is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f'Ingredient with ID {id} not found'
+        )
+
+    ingredient_data: dict = serialize_ingredient(ingredient)
+
+    return JSONResponse(
+        content=ingredient_data, status_code=status.HTTP_200_OK)
+
+
+@router.get('/recipes', response_model=list[RecipeSchema])
+async def get_recipes_list(
+    current_user_id: int = Depends(get_current_user_id),
+    author: int = Query(None, title='Author'),
+    tags: list[str] = Query(None, title='Tags'),
+    is_favorited: BoolOptions = Query(
+        BoolOptions.false, title='Is favorited'),
+    is_in_shopping_cart: BoolOptions = Query(
+        BoolOptions.false, title='Is in shopping cart'),
+    session: AsyncSession = Depends(get_async_session)
+        ) -> JSONResponse:
+    recipes = await get_recipes_from_db(
+        session, current_user_id,
+        author, tags,
+        is_favorited, is_in_shopping_cart
+    )
+
+    recipes_data = await serialize_recipes_list(recipes)
+
+    return JSONResponse(content=recipes_data, status_code=status.HTTP_200_OK)
 
 
 @router.post('/recipes', response_model=RecipeSchema)
@@ -257,6 +257,8 @@ async def update_recipe(
 
     await RecipeUtility.perform_update_recipe(
         target_recipe, recipe_data, session)
+
+    await session.refresh(target_recipe)
 
     updated_recipe = await get_single_recipe_from_db(
         target_recipe.id, session, current_user_id)
@@ -307,7 +309,10 @@ async def delete_recipe(
 async def add_to_favorite(
     id: int = Path(..., title='Recipe ID'),
     current_user_id: int = Depends(get_current_user_id),
-        session: AsyncSession = Depends(get_async_session)) -> JSONResponse:
+    session: AsyncSession = Depends(get_async_session)
+        ) -> JSONResponse:
+
+    cur_recipe: RecipeModel = await get_recipe_or_404(id, session)
 
     if await is_recipe_in_favorite(session, current_user_id, id):
         raise HTTPException(
@@ -319,11 +324,34 @@ async def add_to_favorite(
         user_id=current_user_id, recipe_id=id))
     await session.commit()
 
-    cur_recipe: RecipeModel = await get_recipe_or_404(id, session)
-
     recipe_data: dict = serialize_favorite(cur_recipe)
 
     return JSONResponse(content=recipe_data, status_code=status.HTTP_200_OK)
+
+
+@router.delete('/recipes/{id}/favorite')
+async def delete_from_favorite(
+    id: int = Path(..., title='Recipe ID'),
+    current_user_id: int = Depends(get_current_user_id),
+    session: AsyncSession = Depends(get_async_session)
+        ) -> Response:
+
+    await get_recipe_or_404(id, session)
+
+    if not await is_recipe_in_favorite(session, current_user_id, id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f'Recipe with id {id} is not in favorite'
+        )
+
+    await session.execute(
+        delete(favorite)
+        .where(favorite.c.user_id == current_user_id)
+        .where(favorite.c.recipe_id == id)
+    )
+    await session.commit()
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 

@@ -46,7 +46,7 @@ async def is_recipe_in_favorite(session, user_id, recipe_id) -> bool:
 
 
 async def get_recipe_or_404(
-        recipe_id: int, session: AsyncSession) -> RecipeModel:
+        recipe_id: int, session: AsyncSession) -> Optional[RecipeModel]:
     existing_recipe = await session.execute(
         select(RecipeModel).where(RecipeModel.id == recipe_id))
 
