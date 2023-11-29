@@ -18,13 +18,13 @@ services:
       timeout: 3s
       retries: 3
 
-  # app:
-  #   container_name: "alco_app"
-  #   build: .
-  #   entrypoint: ["sh", "-c", "(cd db && alembic upgrade head) && uvicorn api.main:app --host 0.0.0.0 --reload"]
-  #   # entrypoint: ["sh", "-c", "(cd db && alembic upgrade head)"]
-  #   depends_on:
-  #     db:
-  #       condition: service_healthy
-  #   ports:
-  #       - "8000:8000"
+  app:
+    container_name: "alco_app"
+    build: .
+    entrypoint: ["sh", "-c", "(cd db && alembic upgrade head) && uvicorn api.main:app --host 0.0.0.0 --reload"]
+    # entrypoint: ["sh", "-c", "(cd db && alembic upgrade head)"]
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+        - "8000:8000"

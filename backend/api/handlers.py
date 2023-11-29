@@ -8,19 +8,20 @@ from sqlalchemy.future import select
 from starlette.responses import Response
 
 from db.models import (AmountModel, IngredientModel, RecipeModel, TagModel,
-                       favorite)
-from db.schemas import (FavoriteSchema, IngredientSchema, RecipeSchema,
+                       favorite, shopping_cart)
+from db.schemas import (FavoriteCartSchema, IngredientSchema, RecipeSchema,
                         TagSchema)
 from db.session import get_async_session
 from settings import PAGE_LIMIT
 
 from .dals import (delete_amounts, delete_tags, get_amount, get_recipe_or_404,
                    get_recipes_from_db, get_single_recipe_from_db,
-                   is_recipe_in_favorite, recipe_tag_association_exists)
+                   is_recipe_in_favorite, is_recipe_in_shopping_cart,
+                   recipe_tag_association_exists)
 from .serializers import (serialize_favorite, serialize_ingredient,
                           serialize_ingredients_list, serialize_recipe,
-                          serialize_recipes_list, serialize_tag,
-                          serialize_tags_list)
+                          serialize_recipes_list, serialize_shopping_cart,
+                          serialize_tag, serialize_tags_list)
 from .utils import BoolOptions, get_current_user_id
 
 router = APIRouter()
@@ -227,7 +228,7 @@ async def create_recipe(
         ) -> JSONResponse:
 
     new_recipe = RecipeModel(
-        author_id=current_user_id,
+        author=current_user_id,
         pub_date=datetime.utcnow()
     )
 
@@ -305,7 +306,7 @@ async def delete_recipe(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post('/recipes/{id}/favorite', response_model=FavoriteSchema)
+@router.post('/recipes/{id}/favorite', response_model=FavoriteCartSchema)
 async def add_to_favorite(
     id: int = Path(..., title='Recipe ID'),
     current_user_id: int = Depends(get_current_user_id),
@@ -354,6 +355,55 @@ async def delete_from_favorite(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.post('/recipes/{id}/shopping_cart', response_model=FavoriteCartSchema)
+async def add_to_shopping_cart(
+    id: int = Path(..., title='Recipe ID'),
+    current_user_id: int = Depends(get_current_user_id),
+    session: AsyncSession = Depends(get_async_session)
+        ) -> JSONResponse:
+
+    cur_recipe: RecipeModel = await get_recipe_or_404(id, session)
+
+    if await is_recipe_in_shopping_cart(session, current_user_id, id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f'Recipe with id {id} is already in shopping cart'
+        )
+
+    await session.execute(shopping_cart.insert().values(
+        user_id=current_user_id, recipe_id=id))
+    await session.commit()
+
+    recipe_data: dict = serialize_shopping_cart(cur_recipe)
+
+    return JSONResponse(content=recipe_data, status_code=status.HTTP_200_OK)
+
+
+@router.delete('/recipes/{id}/shopping_cart')
+async def delete_from_shopping_cart(
+    id: int = Path(..., title='Recipe ID'),
+    current_user_id: int = Depends(get_current_user_id),
+    session: AsyncSession = Depends(get_async_session)
+        ) -> Response:
+
+    await get_recipe_or_404(id, session)
+
+    if not await is_recipe_in_shopping_cart(session, current_user_id, id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f'Recipe with id {id} is not in shopping cart'
+        )
+
+    await session.execute(
+        delete(shopping_cart)
+        .where(shopping_cart.c.user_id == current_user_id)
+        .where(shopping_cart.c.recipe_id == id)
+    )
+    await session.commit()
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 
 # class PaginationMixin:
 
@@ -382,7 +432,7 @@ async def delete_from_favorite(
 #             .join(recipe_tag_association, isouter=True)
 #             .join(TagModel, isouter=True)
 #             .filter(TagModel.slug.in_(tags) if tags else True)
-#             .filter(RecipeModel.author_id == author
+#             .filter(RecipeModel.author == author
 #                     if author is not None else True)
 #             .offset((page - 1) * limit)
 #             .limit(limit)

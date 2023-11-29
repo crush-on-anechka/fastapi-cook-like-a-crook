@@ -32,6 +32,8 @@ def upgrade() -> None:
     sa.Column('name', sa.String(length=200), nullable=True),
     sa.Column('slug', sa.String(length=200), nullable=True),
     sa.Column('color', sa.String(length=7), nullable=True),
+    sa.CheckConstraint('slug ~ "^[-a-zA-Z0-9_]+$"', name='check_valid_slug'),
+    sa.CheckConstraint('color ~ "^#([a-f0-9]{6})$"', name='check_valid_hex_color'),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('color'),
     sa.UniqueConstraint('name'),
@@ -39,19 +41,25 @@ def upgrade() -> None:
     )
     op.create_table('users',
     sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
-    sa.Column('name', sa.String(length=200), nullable=True),
+    sa.Column('email', sa.String(), nullable=True),
+    sa.Column('username', sa.String(length=150), nullable=True),
+    sa.Column('first_name', sa.String(length=150), nullable=True),
+    sa.Column('last_name', sa.String(length=150), nullable=True),
+    sa.Column('is_subscribed', sa.Boolean(), nullable=True, default=False),
+    sa.CheckConstraint('username ~ "^[\\w.@+-]+$"', name='check_valid_username'),
     sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('name')
+    sa.UniqueConstraint('username')
     )
     op.create_table('recipes',
     sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
     sa.Column('name', sa.String(length=200), nullable=True),
     sa.Column('text', sa.Text(), nullable=True),
     sa.Column('pub_date', sa.DateTime(), nullable=True),
-    sa.Column('author_id', sa.Integer(), nullable=True),
+    sa.Column('author', sa.Integer(), nullable=True),
     sa.Column('cooking_time', sa.SmallInteger(), nullable=True),
     sa.Column('image', sa.String(), nullable=True),
-    sa.ForeignKeyConstraint(['author_id'], ['users.id'], ondelete='CASCADE'),
+    sa.CheckConstraint('cooking_time > 0', name='check_positive_cooking_time'),
+    sa.ForeignKeyConstraint(['author'], ['users.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('amounts',

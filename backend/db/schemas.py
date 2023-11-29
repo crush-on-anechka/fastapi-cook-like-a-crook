@@ -1,5 +1,4 @@
-from pydantic import (BaseModel, ValidationError, ValidationInfo,
-                      field_validator)
+from pydantic import BaseModel, EmailStr, ValidationInfo, field_validator
 
 # class CustomModel(BaseModel):
 #     model_config = ConfigDict(from_attributes=True)
@@ -7,7 +6,11 @@ from pydantic import (BaseModel, ValidationError, ValidationInfo,
 
 class UserSchema(BaseModel):
     id: int
-    name: str
+    email: EmailStr
+    username: str
+    first_name: str
+    last_name: str
+    is_subscribed: bool
 
 
 class TagSchema(BaseModel):
@@ -32,7 +35,7 @@ class RecipeSchema(BaseModel):
     name: str
     text: str
     pub_date: str
-    author_id: UserSchema  # rename to author!
+    author: UserSchema
     cooking_time: int
     image: str
     tags: list[TagSchema]
@@ -48,7 +51,7 @@ class RecipeSchema(BaseModel):
         return value
 
 
-class FavoriteSchema(BaseModel):
+class FavoriteCartSchema(BaseModel):
     id: int
     name: str
     image: str

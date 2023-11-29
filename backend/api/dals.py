@@ -45,6 +45,17 @@ async def is_recipe_in_favorite(session, user_id, recipe_id) -> bool:
     return favorite_instance is not None
 
 
+async def is_recipe_in_shopping_cart(session, user_id, recipe_id) -> bool:
+    query = select(shopping_cart).where(and_(
+        shopping_cart.c.user_id == user_id,
+        shopping_cart.c.recipe_id == recipe_id
+    ))
+    result = await session.execute(query)
+    shopping_cart_instance = result.scalar()
+
+    return shopping_cart_instance is not None
+
+
 async def get_recipe_or_404(
         recipe_id: int, session: AsyncSession) -> Optional[RecipeModel]:
     existing_recipe = await session.execute(
@@ -144,7 +155,7 @@ async def get_recipes_from_db(
 
     if author_id:
         recipes_query = recipes_query.filter(
-            RecipeModel.author_id == author_id)
+            RecipeModel.author == author_id)
 
     if tags:
         recipes_query = recipes_query.filter(

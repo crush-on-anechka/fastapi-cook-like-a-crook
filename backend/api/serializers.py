@@ -1,8 +1,7 @@
 from pydantic import ValidationError
 
-from db.schemas import (FavoriteSchema, IngredientSchema,
-                        IngredientWithAmountSchema, RecipeSchema, TagSchema,
-                        UserSchema)
+from db.schemas import (FavoriteCartSchema, IngredientSchema, RecipeSchema,
+                        TagSchema, UserSchema)
 
 from .utils import handle_validation_error
 
@@ -29,10 +28,20 @@ def serialize_tag(tag) -> dict:
 
 def serialize_favorite(recipe) -> dict:
     try:
-        recipe_data = FavoriteSchema(**recipe.__dict__).dict()
+        recipe_data = FavoriteCartSchema(**recipe.__dict__).dict()
     except ValidationError as err:
         handle_validation_error(
             err, 'Validation error while processing the favorited recipe data')
+
+    return recipe_data
+
+
+def serialize_shopping_cart(recipe) -> dict:
+    try:
+        recipe_data = FavoriteCartSchema(**recipe.__dict__).dict()
+    except ValidationError as err:
+        handle_validation_error(
+            err, 'Validation error while processing the recipe in cart data')
 
     return recipe_data
 
@@ -65,7 +74,7 @@ async def serialize_recipes_list(recipes) -> list[dict]:
                 **{
                     **recipe.__dict__,
                     'pub_date': recipe.pub_date.isoformat(),
-                    'author_id': UserSchema(**user.__dict__),  # TODO: rename to author!
+                    'author': UserSchema(**user.__dict__),
                     'tags': [TagSchema(**tag.__dict__) for tag in recipe.tags],
                     'is_favorited': is_favorited,
                     'is_in_shopping_cart': is_in_shopping_cart,
@@ -94,7 +103,7 @@ async def serialize_recipe(
                 **{
                     **recipe.__dict__,
                     'pub_date': recipe.pub_date.isoformat(),
-                    'author_id': UserSchema(**user.__dict__),  # TODO: rename to author!
+                    'author': UserSchema(**user.__dict__),
                     'tags': [TagSchema(**tag.__dict__) for tag in recipe.tags],
                     'is_favorited': is_favorited,
                     'is_in_shopping_cart': is_in_shopping_cart,

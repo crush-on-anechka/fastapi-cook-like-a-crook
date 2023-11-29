@@ -1,7 +1,7 @@
 from datetime import datetime
 
-from sqlalchemy import (CheckConstraint, Column, DateTime, ForeignKey, Index,
-                        Integer, SmallInteger, String, Table, Text,
+from sqlalchemy import (Boolean, CheckConstraint, Column, DateTime, ForeignKey,
+                        Index, Integer, SmallInteger, String, Table, Text,
                         UniqueConstraint)
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -36,11 +36,19 @@ shopping_cart = Table(
 )
 
 
-class UserModel(Base):  # TODO: IMPLEMENT!
+class UserModel(Base):
     __tablename__ = 'users'
 
     id = Column(Integer, autoincrement=True, primary_key=True)
-    name = Column(String(200), unique=True)
+    email = Column(String())
+    username = Column(
+        String(150),
+        CheckConstraint(
+            'username ~ "^[\\w.@+-]+$"', name='check_valid_username'),
+        unique=True)
+    first_name = Column(String(150))
+    last_name = Column(String(150))
+    is_subscribed = Column(Boolean(), default=False)
 
 
 class IngredientModel(Base):
@@ -56,9 +64,17 @@ class TagModel(Base):
     __tablename__ = 'tags'
 
     id = Column(Integer, autoincrement=True, primary_key=True)
-    name = Column(String(200), unique=True)  # TODO: validate!!!
-    slug = Column(String(200), unique=True)
-    color = Column(String(7), unique=True)  # TODO: validate!!!
+    name = Column(String(200), unique=True)
+    slug = Column(
+        String(200),
+        CheckConstraint(
+            'slug ~ "^[-a-zA-Z0-9_]+$"', name='check_valid_slug'),
+        unique=True)
+    color = Column(
+        String(7),
+        CheckConstraint(
+            'color ~ "^#([a-f0-9]{6})$"', name='check_valid_hex_color'),
+        unique=True)
     recipes = relationship(
         'RecipeModel', secondary=recipe_tag_association, back_populates='tags')
 
@@ -70,7 +86,7 @@ class RecipeModel(Base):
     name = Column(String(200))
     text = Column(Text)
     pub_date = Column(DateTime, default=datetime.utcnow)
-    author_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'))  # TODO: rename to author!
+    author = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'))
     ingredients = relationship(
         'AmountModel', back_populates='recipe', lazy='selectin')
     tags = relationship('TagModel',
@@ -89,7 +105,8 @@ class AmountModel(Base):
         'recipes.id', ondelete='CASCADE'), primary_key=True)
     ingredient_id = Column(Integer, ForeignKey(
         'ingredients.id', ondelete='CASCADE'), primary_key=True)
-    amount = Column(SmallInteger)
+    amount = Column(SmallInteger, CheckConstraint(
+        'amount > 0', name='check_positive_amount'))
 
     recipe = relationship(
         'RecipeModel', back_populates='ingredients', lazy='selectin')
