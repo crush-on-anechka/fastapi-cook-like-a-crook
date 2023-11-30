@@ -1,16 +1,26 @@
+from typing import Optional
+
 from pydantic import BaseModel, EmailStr, ValidationInfo, field_validator
 
 # class CustomModel(BaseModel):
 #     model_config = ConfigDict(from_attributes=True)
 
 
-class UserSchema(BaseModel):
+class ShowUserSchema(BaseModel):
     id: int
     email: EmailStr
     username: str
     first_name: str
     last_name: str
     is_subscribed: bool
+
+
+class CreateUserSchema(BaseModel):
+    email: EmailStr
+    username: str
+    first_name: str
+    last_name: str
+    password: str
 
 
 class TagSchema(BaseModel):
@@ -30,12 +40,26 @@ class IngredientWithAmountSchema(IngredientSchema):
     amount: int
 
 
-class RecipeSchema(BaseModel):
+class AmountSchema(BaseModel):
+    id: int
+    amount: int
+
+
+class CreateRecipeSchema(BaseModel):
+    name: str
+    text: str
+    cooking_time: int
+    image: str
+    tags: list[int]
+    ingredients: list[AmountSchema]
+
+
+class ShowRecipeSchema(BaseModel):
     id: int
     name: str
     text: str
     pub_date: str
-    author: UserSchema
+    author: ShowUserSchema
     cooking_time: int
     image: str
     tags: list[TagSchema]

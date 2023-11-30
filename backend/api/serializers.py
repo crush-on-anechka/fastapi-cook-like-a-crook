@@ -1,9 +1,29 @@
 from pydantic import ValidationError
 
-from db.schemas import (FavoriteCartSchema, IngredientSchema, RecipeSchema,
-                        TagSchema, UserSchema)
+from db.schemas import (FavoriteCartSchema, IngredientSchema, ShowRecipeSchema,
+                        ShowUserSchema, TagSchema)
 
 from .utils import handle_validation_error
+
+
+def serialize_users_list(users) -> list[dict]:
+    try:
+        users_data = [ShowUserSchema(**user.__dict__).dict() for user in users]
+    except ValidationError as err:
+        handle_validation_error(
+            err, 'Validation error while processing the user data')
+
+    return users_data
+
+
+def serialize_user(user) -> dict:
+    try:
+        user_data = ShowUserSchema(**user.__dict__).dict()
+    except ValidationError as err:
+        handle_validation_error(
+            err, 'Validation error while processing the user data')
+
+    return user_data
 
 
 def serialize_tags_list(tags) -> list[dict]:
@@ -70,11 +90,11 @@ def serialize_ingredient(ingredient) -> dict:
 async def serialize_recipes_list(recipes) -> list[dict]:
     try:
         recipes_data = [
-            RecipeSchema(
+            ShowRecipeSchema(
                 **{
                     **recipe.__dict__,
                     'pub_date': recipe.pub_date.isoformat(),
-                    'author': UserSchema(**user.__dict__),
+                    'author': ShowUserSchema(**user.__dict__),
                     'tags': [TagSchema(**tag.__dict__) for tag in recipe.tags],
                     'is_favorited': is_favorited,
                     'is_in_shopping_cart': is_in_shopping_cart,
@@ -99,11 +119,11 @@ async def serialize_recipes_list(recipes) -> list[dict]:
 async def serialize_recipe(
         recipe, user, is_favorited, is_in_shopping_cart) -> dict:
     try:
-        recipes_data = RecipeSchema(
+        recipes_data = ShowRecipeSchema(
                 **{
                     **recipe.__dict__,
                     'pub_date': recipe.pub_date.isoformat(),
-                    'author': UserSchema(**user.__dict__),
+                    'author': ShowUserSchema(**user.__dict__),
                     'tags': [TagSchema(**tag.__dict__) for tag in recipe.tags],
                     'is_favorited': is_favorited,
                     'is_in_shopping_cart': is_in_shopping_cart,

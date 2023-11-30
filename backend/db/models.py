@@ -40,14 +40,16 @@ class UserModel(Base):
     __tablename__ = 'users'
 
     id = Column(Integer, autoincrement=True, primary_key=True)
-    email = Column(String())
+    email = Column(String(), nullable=False)
+    password = Column(String(150), nullable=False)
     username = Column(
         String(150),
-        CheckConstraint(
-            'username ~ "^[\\w.@+-]+$"', name='check_valid_username'),
-        unique=True)
-    first_name = Column(String(150))
-    last_name = Column(String(150))
+        # CheckConstraint(
+        #     'username ~ "^[\\w.@+-]+$"', name='check_valid_username'),
+        unique=True,
+        nullable=False)
+    first_name = Column(String(150), nullable=False)
+    last_name = Column(String(150), nullable=False)
     is_subscribed = Column(Boolean(), default=False)
 
 
@@ -67,13 +69,13 @@ class TagModel(Base):
     name = Column(String(200), unique=True)
     slug = Column(
         String(200),
-        CheckConstraint(
-            'slug ~ "^[-a-zA-Z0-9_]+$"', name='check_valid_slug'),
+        # CheckConstraint(
+        #     'slug ~ "^[-a-zA-Z0-9_]+$" COLLATE "C"', name='check_valid_slug'),
         unique=True)
     color = Column(
         String(7),
-        CheckConstraint(
-            'color ~ "^#([a-f0-9]{6})$"', name='check_valid_hex_color'),
+        # CheckConstraint(
+        #     'color ~ "^#([a-f0-9]{6})$"', name='check_valid_hex_color'),
         unique=True)
     recipes = relationship(
         'RecipeModel', secondary=recipe_tag_association, back_populates='tags')
@@ -83,19 +85,24 @@ class RecipeModel(Base):
     __tablename__ = 'recipes'
 
     id = Column(Integer, autoincrement=True, primary_key=True)
-    name = Column(String(200))
-    text = Column(Text)
+    name = Column(String(200), nullable=False)
+    text = Column(Text, nullable=False)
     pub_date = Column(DateTime, default=datetime.utcnow)
-    author = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'))
-    ingredients = relationship(
-        'AmountModel', back_populates='recipe', lazy='selectin')
+    author = Column(
+        Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    ingredients = relationship('AmountModel',
+                               back_populates='recipe',
+                               lazy='selectin')
     tags = relationship('TagModel',
                         secondary=recipe_tag_association,
                         back_populates='recipes',
                         lazy='selectin')
-    cooking_time = Column(SmallInteger, CheckConstraint(
-        'cooking_time > 0', name='check_positive_cooking_time'))
-    image = Column(String)  # TODO: Store the image path or reference 'recipes/images/')
+    cooking_time = Column(
+        SmallInteger,
+        CheckConstraint(
+            'cooking_time > 0', name='check_positive_cooking_time'),
+        nullable=False)
+    image = Column(String, nullable=False)  # TODO: Store the image path or reference 'recipes/images/')
 
 
 class AmountModel(Base):

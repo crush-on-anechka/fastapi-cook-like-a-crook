@@ -8,20 +8,22 @@ from sqlalchemy.future import select
 from starlette.responses import Response
 
 from db.models import (AmountModel, IngredientModel, RecipeModel, TagModel,
-                       favorite, shopping_cart)
-from db.schemas import (FavoriteCartSchema, IngredientSchema, RecipeSchema,
-                        TagSchema)
+                       UserModel, favorite, shopping_cart)
+from db.schemas import (CreateRecipeSchema, CreateUserSchema,
+                        FavoriteCartSchema, IngredientSchema, ShowRecipeSchema,
+                        ShowUserSchema, TagSchema)
 from db.session import get_async_session
 from settings import PAGE_LIMIT
 
 from .dals import (delete_amounts, delete_tags, get_amount, get_recipe_or_404,
                    get_recipes_from_db, get_single_recipe_from_db,
-                   is_recipe_in_favorite, is_recipe_in_shopping_cart,
-                   recipe_tag_association_exists)
+                   get_user_or_404, is_recipe_in_favorite,
+                   is_recipe_in_shopping_cart, recipe_tag_association_exists)
 from .serializers import (serialize_favorite, serialize_ingredient,
                           serialize_ingredients_list, serialize_recipe,
                           serialize_recipes_list, serialize_shopping_cart,
-                          serialize_tag, serialize_tags_list)
+                          serialize_tag, serialize_tags_list, serialize_user,
+                          serialize_users_list)
 from .utils import BoolOptions, get_current_user_id
 
 router = APIRouter()
@@ -33,7 +35,7 @@ class RecipeUtility:
         ingredients_data,
         ingredient_ids: list[str],
         cur_recipe: RecipeModel,
-        recipe_data: RecipeSchema,
+        recipe_data: ShowRecipeSchema,
             session: AsyncSession):
         ingredients = await session.execute(
             select(IngredientModel)
@@ -65,7 +67,7 @@ class RecipeUtility:
     async def _add_or_update_tags(
         tag_ids: list[str],
         cur_recipe: RecipeModel,
-        recipe_data: RecipeSchema,
+        recipe_data: ShowRecipeSchema,
             session: AsyncSession):
         tags = await session.execute(
             select(TagModel).where(TagModel.id.in_(tag_ids)))
@@ -88,7 +90,7 @@ class RecipeUtility:
     @staticmethod
     async def _update_recipe_fields(
         cur_recipe: RecipeModel,
-        recipe_data: RecipeSchema,
+        recipe_data: ShowRecipeSchema,
         ingredients_data,
         ingredient_ids,
         tag_ids,
@@ -107,7 +109,7 @@ class RecipeUtility:
     @staticmethod
     async def perform_create_recipe(
         cur_recipe: RecipeModel,
-        recipe_data: RecipeSchema,
+        recipe_data: ShowRecipeSchema,
             session: AsyncSession):
         ingredients_data = recipe_data.get('ingredients', [])
         ingredient_ids = [i['id'] for i in ingredients_data]
@@ -121,7 +123,7 @@ class RecipeUtility:
     @staticmethod
     async def perform_update_recipe(
         cur_recipe: RecipeModel,
-        recipe_data: RecipeSchema,
+        recipe_data: ShowRecipeSchema,
             session: AsyncSession):
         ingredients_data = recipe_data.get('ingredients', [])
         ingredient_ids = [i['id'] for i in ingredients_data]
@@ -131,12 +133,70 @@ class RecipeUtility:
             cur_recipe, recipe_data, ingredients_data,
             ingredient_ids, tag_ids, session
         )
-        await session.flush()
-
         await delete_amounts(cur_recipe, ingredient_ids, session, orphan=True)
         await delete_tags(cur_recipe, tag_ids, session, orphan=True)
 
-        await session.commit()
+
+@router.get('/users', response_model=list[ShowUserSchema])
+async def get_users_list(
+        session: AsyncSession = Depends(get_async_session)) -> JSONResponse:
+    users_result = await session.execute(select(UserModel))
+    users = users_result.scalars().all()
+    users_data: list[dict] = serialize_users_list(users)
+
+    return JSONResponse(content=users_data, status_code=status.HTTP_200_OK)
+
+
+@router.get('/users/me', response_model=ShowUserSchema)
+async def get_current_user_info(
+    current_user_id: int = Depends(get_current_user_id),
+        session: AsyncSession = Depends(get_async_session)) -> JSONResponse:
+    user_result = await session.execute(
+        select(UserModel).filter_by(id=current_user_id))
+    user = user_result.scalar()
+
+    user_data: dict = serialize_user(user)
+
+    return JSONResponse(content=user_data, status_code=status.HTTP_200_OK)
+
+
+@router.get('/users/{id}', response_model=ShowUserSchema)
+async def get_user_by_id(id: int = Path(..., title='User ID'),
+                         session: AsyncSession = Depends(get_async_session)
+                         ) -> JSONResponse:
+    user_result = await session.execute(select(UserModel).filter_by(id=id))
+    user = user_result.scalar()
+
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f'User with ID {id} not found'
+        )
+
+    user_data: dict = serialize_user(user)
+
+    return JSONResponse(content=user_data, status_code=status.HTTP_200_OK)
+
+
+@router.post('/users', response_model=ShowUserSchema)
+async def create_user(
+        user_data: CreateUserSchema,
+        session: AsyncSession = Depends(get_async_session)) -> JSONResponse:
+
+    new_user = UserModel(**user_data.dict())
+
+    session.add(new_user)
+    await session.flush()
+
+    created_user = await get_user_or_404(new_user.id, session)
+
+    user_data: dict = serialize_user(created_user)
+    user_data.pop('is_subscribed')
+
+    await session.commit()
+
+    return JSONResponse(
+        content=user_data, status_code=status.HTTP_201_CREATED)
 
 
 @router.get('/tags', response_model=list[TagSchema])
@@ -198,7 +258,7 @@ async def get_ingredient_by_id(
         content=ingredient_data, status_code=status.HTTP_200_OK)
 
 
-@router.get('/recipes', response_model=list[RecipeSchema])
+@router.get('/recipes', response_model=list[ShowRecipeSchema])
 async def get_recipes_list(
     current_user_id: int = Depends(get_current_user_id),
     author: int = Query(None, title='Author'),
@@ -220,9 +280,9 @@ async def get_recipes_list(
     return JSONResponse(content=recipes_data, status_code=status.HTTP_200_OK)
 
 
-@router.post('/recipes', response_model=RecipeSchema)
+@router.post('/recipes', response_model=ShowRecipeSchema)
 async def create_recipe(
-    recipe_data: dict,
+    recipe_data: CreateRecipeSchema,
     current_user_id: int = Depends(get_current_user_id),
     session: AsyncSession = Depends(get_async_session)
         ) -> JSONResponse:
@@ -232,23 +292,26 @@ async def create_recipe(
         pub_date=datetime.utcnow()
     )
 
-    await RecipeUtility.perform_create_recipe(new_recipe, recipe_data, session)
+    await RecipeUtility.perform_create_recipe(
+        new_recipe, recipe_data.dict(), session)
 
     session.add(new_recipe)
-    await session.commit()
+    await session.flush()
 
     created_recipe = await get_single_recipe_from_db(
         new_recipe.id, session, current_user_id)
 
     recipe_data: dict = await serialize_recipe(*created_recipe)
 
+    await session.commit()
+
     return JSONResponse(
         content=recipe_data, status_code=status.HTTP_201_CREATED)
 
 
-@router.patch('/recipes/{id}', response_model=RecipeSchema)
+@router.patch('/recipes/{id}', response_model=ShowRecipeSchema)
 async def update_recipe(
-    recipe_data: dict,
+    recipe_data: CreateRecipeSchema,
     id: int = Path(..., title='Recipe ID'),
     current_user_id: int = Depends(get_current_user_id),
     session: AsyncSession = Depends(get_async_session)
@@ -257,8 +320,9 @@ async def update_recipe(
     target_recipe: RecipeModel = await get_recipe_or_404(id, session)
 
     await RecipeUtility.perform_update_recipe(
-        target_recipe, recipe_data, session)
+        target_recipe, recipe_data.dict(), session)
 
+    await session.flush()
     await session.refresh(target_recipe)
 
     updated_recipe = await get_single_recipe_from_db(
@@ -266,10 +330,12 @@ async def update_recipe(
 
     recipe_data: dict = await serialize_recipe(*updated_recipe)
 
+    await session.commit()
+
     return JSONResponse(content=recipe_data, status_code=status.HTTP_200_OK)
 
 
-@router.get('/recipes/{id}', response_model=RecipeSchema)
+@router.get('/recipes/{id}', response_model=ShowRecipeSchema)
 async def get_recipe_by_id(id: int = Path(..., title='Tag ID'),
                            current_user_id: int = Depends(get_current_user_id),
                            session: AsyncSession = Depends(get_async_session)
@@ -323,9 +389,10 @@ async def add_to_favorite(
 
     await session.execute(favorite.insert().values(
         user_id=current_user_id, recipe_id=id))
-    await session.commit()
 
     recipe_data: dict = serialize_favorite(cur_recipe)
+
+    await session.commit()
 
     return JSONResponse(content=recipe_data, status_code=status.HTTP_200_OK)
 
@@ -372,9 +439,10 @@ async def add_to_shopping_cart(
 
     await session.execute(shopping_cart.insert().values(
         user_id=current_user_id, recipe_id=id))
-    await session.commit()
 
     recipe_data: dict = serialize_shopping_cart(cur_recipe)
+
+    await session.commit()
 
     return JSONResponse(content=recipe_data, status_code=status.HTTP_200_OK)
 

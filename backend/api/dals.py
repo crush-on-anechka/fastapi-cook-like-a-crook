@@ -72,6 +72,22 @@ async def get_recipe_or_404(
     return existing_recipe
 
 
+async def get_user_or_404(
+        user_id: int, session: AsyncSession) -> Optional[UserModel]:
+    existing_user = await session.execute(
+        select(UserModel).where(UserModel.id == user_id))
+
+    existing_user = existing_user.scalar()
+
+    if not existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f'User with id {user_id} not found'
+        )
+
+    return existing_user
+
+
 async def delete_amounts(
     cur_recipe: RecipeModel,
     ingredient_ids: list[str],
