@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status, Form
 from fastapi.responses import JSONResponse
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,13 +11,13 @@ from db.models import (AmountModel, IngredientModel, RecipeModel, TagModel,
                        UserModel, favorite, shopping_cart)
 from db.schemas import (CreateRecipeSchema, CreateUserSchema,
                         FavoriteCartSchema, IngredientSchema, ShowRecipeSchema,
-                        ShowUserSchema, TagSchema)
+                        ShowUserSchema, TagSchema, TokenSchema)
 from db.session import get_async_session
 from settings import PAGE_LIMIT
 
 from .dals import (delete_amounts, delete_tags, get_amount, get_recipe_or_404,
                    get_recipes_from_db, get_single_recipe_from_db,
-                   get_user_or_404, is_recipe_in_favorite,
+                   get_user_or_404, is_recipe_in_favorite, get_user_by_email_for_auth,
                    is_recipe_in_shopping_cart, recipe_tag_association_exists)
 from .serializers import (serialize_favorite, serialize_ingredient,
                           serialize_ingredients_list, serialize_recipe,
@@ -25,6 +25,7 @@ from .serializers import (serialize_favorite, serialize_ingredient,
                           serialize_tag, serialize_tags_list, serialize_user,
                           serialize_users_list)
 from .utils import BoolOptions, get_current_user_id
+from .auth import create_jwt, is_authenticated
 
 router = APIRouter()
 
@@ -137,6 +138,27 @@ class RecipeUtility:
         await delete_tags(cur_recipe, tag_ids, session, orphan=True)
 
 
+@router.post('/auth/token/login', response_model=TokenSchema)
+async def get_token(
+    username: str = Form(),
+    password: str = Form(),
+        session: AsyncSession = Depends(get_async_session)) -> JSONResponse:
+    user = await get_user_by_email_for_auth(username, session)
+    if not user or password != user.password:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail='Invalid credentials',
+            headers={'WWW-Authenticate': 'Bearer'},
+        )
+
+    data = {
+        'access_token': create_jwt({'sub': user.id}),
+        'token_type': 'bearer'
+    }
+
+    return JSONResponse(content=data, status_code=status.HTTP_201_CREATED)
+
+
 @router.get('/users', response_model=list[ShowUserSchema])
 async def get_users_list(
         session: AsyncSession = Depends(get_async_session)) -> JSONResponse:
@@ -149,7 +171,7 @@ async def get_users_list(
 
 @router.get('/users/me', response_model=ShowUserSchema)
 async def get_current_user_info(
-    current_user_id: int = Depends(get_current_user_id),
+    current_user_id: int = Depends(is_authenticated),
         session: AsyncSession = Depends(get_async_session)) -> JSONResponse:
     user_result = await session.execute(
         select(UserModel).filter_by(id=current_user_id))

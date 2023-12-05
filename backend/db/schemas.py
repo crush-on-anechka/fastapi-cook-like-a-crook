@@ -82,6 +82,11 @@ class FavoriteCartSchema(BaseModel):
     cooking_time: int
 
 
+class TokenSchema(BaseModel):
+    access_token: str
+    token_type: str
+
+
 # class RecipePaginationSchema(BaseModel):
 #     count: int
 #     next: str

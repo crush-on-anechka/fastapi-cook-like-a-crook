@@ -18,3 +18,6 @@ POSTGRES_URL = (
 )
 
 PAGE_LIMIT = 10
+
+SECRET_KEY = os.environ.get('SECRET_KEY', 'secret_key')
+ALGORITHM = os.environ.get('ALGORITHM', 'HS256')

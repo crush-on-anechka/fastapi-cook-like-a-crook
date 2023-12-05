@@ -88,6 +88,16 @@ async def get_user_or_404(
     return existing_user
 
 
+async def get_user_by_email_for_auth(
+        email: str, session: AsyncSession) -> Optional[UserModel]:
+    existing_user = await session.execute(
+        select(UserModel).where(UserModel.email == email))
+
+    existing_user = existing_user.scalar()
+
+    return existing_user
+
+
 async def delete_amounts(
     cur_recipe: RecipeModel,
     ingredient_ids: list[str],
