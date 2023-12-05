@@ -545,6 +545,30 @@ async def subscribe(id: int = Path(..., title='User ID'),
     return JSONResponse(content=user_data, status_code=status.HTTP_201_CREATED)
 
 
+@router.delete('/users/{id}/subscribe')
+async def unsubscribe(id: int = Path(..., title='User ID'),
+                      current_user_id: int = Depends(is_authenticated),
+                      session: AsyncSession = Depends(get_async_session)
+                      ) -> Response:
+
+    await get_user_or_404(id, session)
+
+    if not await is_subscribed(session, current_user_id, id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f'User with id {id} is not followed'
+        )
+
+    await session.execute(
+        delete(subscription)
+        .where(subscription.c.user_id == current_user_id)
+        .where(subscription.c.followed_user_id == id)
+    )
+    await session.commit()
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 
 # class PaginationMixin:
 
