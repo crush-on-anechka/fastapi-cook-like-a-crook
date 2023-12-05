@@ -27,8 +27,3 @@ def handle_validation_error(err: ValidationError, error_message: str) -> None:
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         detail=error_message,
     ) from err
-
-
-# TODO: IMPLEMENT!!
-async def get_current_user_id():
-    return 1

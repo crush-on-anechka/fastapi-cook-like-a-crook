@@ -1,18 +1,12 @@
-from typing import Optional
-
 from pydantic import BaseModel, EmailStr, ValidationInfo, field_validator
 
 # class CustomModel(BaseModel):
 #     model_config = ConfigDict(from_attributes=True)
 
 
-class ShowUserSchema(BaseModel):
-    id: int
-    email: EmailStr
-    username: str
-    first_name: str
-    last_name: str
-    is_subscribed: bool
+class TokenSchema(BaseModel):
+    access_token: str
+    token_type: str
 
 
 class CreateUserSchema(BaseModel):
@@ -21,6 +15,15 @@ class CreateUserSchema(BaseModel):
     first_name: str
     last_name: str
     password: str
+
+
+class BriefUserSchema(BaseModel):
+    id: int
+    email: EmailStr
+    username: str
+    first_name: str
+    last_name: str
+    is_subscribed: bool
 
 
 class TagSchema(BaseModel):
@@ -54,12 +57,19 @@ class CreateRecipeSchema(BaseModel):
     ingredients: list[AmountSchema]
 
 
-class ShowRecipeSchema(BaseModel):
+class BriefRecipeSchema(BaseModel):
+    id: int
+    name: str
+    image: str
+    cooking_time: int
+
+
+class DetailedRecipeSchema(BaseModel):
     id: int
     name: str
     text: str
     pub_date: str
-    author: ShowUserSchema
+    author: BriefUserSchema
     cooking_time: int
     image: str
     tags: list[TagSchema]
@@ -75,16 +85,9 @@ class ShowRecipeSchema(BaseModel):
         return value
 
 
-class FavoriteCartSchema(BaseModel):
-    id: int
-    name: str
-    image: str
-    cooking_time: int
-
-
-class TokenSchema(BaseModel):
-    access_token: str
-    token_type: str
+class DetailedUserSchema(BriefUserSchema):
+    recipes: list[BriefRecipeSchema]
+    recipes_count: int
 
 
 # class RecipePaginationSchema(BaseModel):

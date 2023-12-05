@@ -18,6 +18,17 @@ recipe_tag_association = Table(
 )
 
 
+subscription = Table(
+    'subscriptions',
+    Base.metadata,
+    Column('user_id', Integer, ForeignKey('users.id', ondelete='CASCADE')),
+    Column('followed_user_id',
+           Integer,
+           ForeignKey('users.id', ondelete='CASCADE')),
+    UniqueConstraint('user_id', 'followed_user_id', name='unique_subscription')
+)
+
+
 favorite = Table(
     'favorite',
     Base.metadata,

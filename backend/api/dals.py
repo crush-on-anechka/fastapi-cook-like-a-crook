@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from db.models import (AmountModel, RecipeModel, TagModel, UserModel, favorite,
-                       recipe_tag_association, shopping_cart)
+                       recipe_tag_association, shopping_cart, subscription)
 
 from .utils import BoolOptions
 
@@ -45,6 +45,17 @@ async def is_recipe_in_favorite(session, user_id, recipe_id) -> bool:
     return favorite_instance is not None
 
 
+async def is_subscribed(session, user_id, followed_user_id) -> bool:
+    query = select(subscription).where(and_(
+        subscription.c.user_id == user_id,
+        subscription.c.followed_user_id == followed_user_id
+    ))
+    result = await session.execute(query)
+    subscription_instance = result.scalar()
+
+    return subscription_instance is not None
+
+
 async def is_recipe_in_shopping_cart(session, user_id, recipe_id) -> bool:
     query = select(shopping_cart).where(and_(
         shopping_cart.c.user_id == user_id,
@@ -70,6 +81,16 @@ async def get_recipe_or_404(
         )
 
     return existing_recipe
+
+
+async def get_recipes_by_user_id(
+        user_id: int, session: AsyncSession) -> list[RecipeModel]:
+    recipes_result = await session.execute(
+        select(RecipeModel).where(RecipeModel.author == user_id))
+
+    recipes = recipes_result.scalars().all()
+
+    return recipes
 
 
 async def get_user_or_404(
