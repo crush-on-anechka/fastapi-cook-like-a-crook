@@ -1,17 +1,20 @@
+from typing import Optional
+
+import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jwt.exceptions import PyJWTError
-import jwt
-from settings import SECRET_KEY, ALGORITHM
+
+from settings import ALGORITHM, SECRET_KEY
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl='/api/auth/token/login')
 
 
-def create_jwt(data: dict):
+def create_jwt(data: dict) -> str:
     return jwt.encode(data, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def verify_jwt(token: str) -> int:
+def verify_jwt(token: str) -> Optional[int]:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return payload.get('sub')
@@ -23,10 +26,5 @@ def verify_jwt(token: str) -> int:
         )
 
 
-def is_authenticated(token: str = Depends(oauth2_scheme)):
+def is_authenticated(token: str = Depends(oauth2_scheme)) -> Optional[int]:
     return verify_jwt(token)
-
-
-# @app.get('/private-data')
-# async def private_data(user_id=Depends(is_authenticated)):
-#     return {'message': f'You have access to private data, {user_id}'}

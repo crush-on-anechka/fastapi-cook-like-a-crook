@@ -1,6 +1,7 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status, Form
+from fastapi import (APIRouter, Depends, Form, HTTPException, Path, Query,
+                     status)
 from fastapi.responses import JSONResponse
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,17 +16,18 @@ from db.schemas import (CreateRecipeSchema, CreateUserSchema,
 from db.session import get_async_session
 from settings import PAGE_LIMIT
 
+from .auth import create_jwt, is_authenticated
 from .dals import (delete_amounts, delete_tags, get_amount, get_recipe_or_404,
                    get_recipes_from_db, get_single_recipe_from_db,
-                   get_user_or_404, is_recipe_in_favorite, get_user_by_email_for_auth,
-                   is_recipe_in_shopping_cart, recipe_tag_association_exists)
+                   get_user_by_email_for_auth, get_user_or_404,
+                   is_recipe_in_favorite, is_recipe_in_shopping_cart,
+                   recipe_tag_association_exists)
 from .serializers import (serialize_favorite, serialize_ingredient,
                           serialize_ingredients_list, serialize_recipe,
                           serialize_recipes_list, serialize_shopping_cart,
                           serialize_tag, serialize_tags_list, serialize_user,
                           serialize_users_list)
 from .utils import BoolOptions, get_current_user_id
-from .auth import create_jwt, is_authenticated
 
 router = APIRouter()
 
@@ -184,6 +186,7 @@ async def get_current_user_info(
 
 @router.get('/users/{id}', response_model=ShowUserSchema)
 async def get_user_by_id(id: int = Path(..., title='User ID'),
+                         _: int = Depends(is_authenticated),
                          session: AsyncSession = Depends(get_async_session)
                          ) -> JSONResponse:
     user_result = await session.execute(select(UserModel).filter_by(id=id))
@@ -282,7 +285,7 @@ async def get_ingredient_by_id(
 
 @router.get('/recipes', response_model=list[ShowRecipeSchema])
 async def get_recipes_list(
-    current_user_id: int = Depends(get_current_user_id),
+    current_user_id: int = Depends(is_authenticated),
     author: int = Query(None, title='Author'),
     tags: list[str] = Query(None, title='Tags'),
     is_favorited: BoolOptions = Query(
@@ -335,11 +338,17 @@ async def create_recipe(
 async def update_recipe(
     recipe_data: CreateRecipeSchema,
     id: int = Path(..., title='Recipe ID'),
-    current_user_id: int = Depends(get_current_user_id),
+    current_user_id: int = Depends(is_authenticated),
     session: AsyncSession = Depends(get_async_session)
         ) -> JSONResponse:
 
     target_recipe: RecipeModel = await get_recipe_or_404(id, session)
+
+    if current_user_id != target_recipe.author:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail='Not enough permissions',
+        )
 
     await RecipeUtility.perform_update_recipe(
         target_recipe, recipe_data.dict(), session)
@@ -359,7 +368,7 @@ async def update_recipe(
 
 @router.get('/recipes/{id}', response_model=ShowRecipeSchema)
 async def get_recipe_by_id(id: int = Path(..., title='Tag ID'),
-                           current_user_id: int = Depends(get_current_user_id),
+                           current_user_id: int = Depends(is_authenticated),
                            session: AsyncSession = Depends(get_async_session)
                            ) -> JSONResponse:
     recipe_with_user = (
@@ -379,11 +388,17 @@ async def get_recipe_by_id(id: int = Path(..., title='Tag ID'),
 @router.delete('/recipes/{id}')
 async def delete_recipe(
     id: int = Path(..., title='Recipe ID'),
-    current_user_id: int = Depends(get_current_user_id),
+    current_user_id: int = Depends(is_authenticated),
     session: AsyncSession = Depends(get_async_session)
         ) -> Response:
 
     cur_recipe: RecipeModel = await get_recipe_or_404(id, session)
+
+    if current_user_id != cur_recipe.author:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail='Not enough permissions',
+        )
 
     for amount in cur_recipe.ingredients:
         await session.delete(amount)
@@ -397,7 +412,7 @@ async def delete_recipe(
 @router.post('/recipes/{id}/favorite', response_model=FavoriteCartSchema)
 async def add_to_favorite(
     id: int = Path(..., title='Recipe ID'),
-    current_user_id: int = Depends(get_current_user_id),
+    current_user_id: int = Depends(is_authenticated),
     session: AsyncSession = Depends(get_async_session)
         ) -> JSONResponse:
 
@@ -422,7 +437,7 @@ async def add_to_favorite(
 @router.delete('/recipes/{id}/favorite')
 async def delete_from_favorite(
     id: int = Path(..., title='Recipe ID'),
-    current_user_id: int = Depends(get_current_user_id),
+    current_user_id: int = Depends(is_authenticated),
     session: AsyncSession = Depends(get_async_session)
         ) -> Response:
 
@@ -447,7 +462,7 @@ async def delete_from_favorite(
 @router.post('/recipes/{id}/shopping_cart', response_model=FavoriteCartSchema)
 async def add_to_shopping_cart(
     id: int = Path(..., title='Recipe ID'),
-    current_user_id: int = Depends(get_current_user_id),
+    current_user_id: int = Depends(is_authenticated),
     session: AsyncSession = Depends(get_async_session)
         ) -> JSONResponse:
 
@@ -472,7 +487,7 @@ async def add_to_shopping_cart(
 @router.delete('/recipes/{id}/shopping_cart')
 async def delete_from_shopping_cart(
     id: int = Path(..., title='Recipe ID'),
-    current_user_id: int = Depends(get_current_user_id),
+    current_user_id: int = Depends(is_authenticated),
     session: AsyncSession = Depends(get_async_session)
         ) -> Response:
 
