@@ -256,3 +256,18 @@ async def get_single_recipe_from_db(
     recipe_with_user = recipe_result.fetchone()
 
     return recipe_with_user
+
+
+async def get_user_subscriptions(current_user_id, session):
+    stmt = select(UserModel).join(
+        subscription,
+        and_(
+            UserModel.id == subscription.c.followed_user_id,
+            subscription.c.user_id == current_user_id
+        )
+    ).options(selectinload(UserModel.recipes))
+
+    result = await session.execute(stmt)
+    users_with_subscriptions = result.scalars().all()
+
+    return users_with_subscriptions

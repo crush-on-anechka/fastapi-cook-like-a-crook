@@ -22,9 +22,9 @@ from .auth import create_jwt, is_authenticated
 from .dals import (delete_amounts, delete_tags, get_amount, get_recipe_or_404,
                    get_recipes_by_user_id, get_recipes_from_db,
                    get_single_recipe_from_db, get_user_by_email_for_auth,
-                   get_user_or_404, is_recipe_in_favorite,
-                   is_recipe_in_shopping_cart, is_subscribed,
-                   recipe_tag_association_exists)
+                   get_user_or_404, get_user_subscriptions,
+                   is_recipe_in_favorite, is_recipe_in_shopping_cart,
+                   is_subscribed, recipe_tag_association_exists)
 from .serializers import (serialize_favorite, serialize_ingredient,
                           serialize_ingredients_list, serialize_recipe,
                           serialize_recipes_list, serialize_shopping_cart,
@@ -185,6 +185,20 @@ async def get_current_user_info(
     user_data: dict = serialize_user(user)
 
     return JSONResponse(content=user_data, status_code=status.HTTP_200_OK)
+
+
+@router.get('/users/subscriptions', response_model=list[DetailedUserSchema])
+async def get_subscriptions(
+    current_user_id: int = Depends(is_authenticated),
+        session: AsyncSession = Depends(get_async_session)) -> JSONResponse:
+
+    subs_result = await get_user_subscriptions(current_user_id, session)
+
+    subscriptions = [
+        serialize_user_with_recipes(user, user.recipes) for user in subs_result
+    ]
+
+    return JSONResponse(content=subscriptions, status_code=status.HTTP_200_OK)
 
 
 @router.get('/users/{id}', response_model=BriefUserSchema)
