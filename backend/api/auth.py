@@ -4,8 +4,11 @@ import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jwt.exceptions import PyJWTError
+from passlib.context import CryptContext
 
 from settings import ALGORITHM, SECRET_KEY
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl='/api/auth/token/login')
 
@@ -28,3 +31,11 @@ def verify_jwt(token: str) -> Optional[int]:
 
 def is_authenticated(token: str = Depends(oauth2_scheme)) -> Optional[int]:
     return verify_jwt(token)
+
+
+def hash_password(raw_password: str) -> str:
+    return pwd_context.hash(raw_password)
+
+
+def password_is_valid(raw_password, hashed_password):
+    return pwd_context.verify(raw_password, hashed_password)

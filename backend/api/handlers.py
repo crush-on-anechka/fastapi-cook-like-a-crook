@@ -18,7 +18,8 @@ from db.schemas import (BriefRecipeSchema, BriefUserSchema, CreateRecipeSchema,
 from db.session import get_async_session
 from settings import PAGE_LIMIT
 
-from .auth import create_jwt, is_authenticated
+from .auth import (create_jwt, hash_password, is_authenticated,
+                   password_is_valid)
 from .dals import (delete_amounts, delete_tags, get_amount, get_recipe_or_404,
                    get_recipes_by_user_id, get_recipes_from_db,
                    get_single_recipe_from_db, get_user_by_email_for_auth,
@@ -149,7 +150,7 @@ async def get_token(
     password: str = Form(),
         session: AsyncSession = Depends(get_async_session)) -> JSONResponse:
     user = await get_user_by_email_for_auth(username, session)
-    if not user or password != user.password:
+    if not user or not password_is_valid(password, user.password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail='Invalid credentials',
@@ -224,6 +225,8 @@ async def get_user_by_id(id: int = Path(..., title='User ID'),
 async def create_user(
         user_data: CreateUserSchema,
         session: AsyncSession = Depends(get_async_session)) -> JSONResponse:
+
+    user_data.password = hash_password(user_data.password)
 
     new_user = UserModel(**user_data.dict())
     session.add(new_user)
