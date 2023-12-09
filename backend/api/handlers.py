@@ -19,7 +19,7 @@ from db.session import get_async_session
 from settings import PAGE_LIMIT
 
 from .auth import (create_jwt, hash_password, is_authenticated,
-                   password_is_valid)
+                   password_format_is_valid, password_hash_is_valid)
 from .dals import (delete_amounts, delete_tags, get_amount, get_recipe_or_404,
                    get_recipes_by_user_id, get_recipes_from_db,
                    get_single_recipe_from_db, get_user_by_email_for_auth,
@@ -200,6 +200,35 @@ async def get_subscriptions(
     ]
 
     return JSONResponse(content=subscriptions, status_code=status.HTTP_200_OK)
+
+
+@router.post('/users/set_password')
+async def change_password(
+    new_password: str = Form(),
+    current_password: str = Form(),
+    current_user_id: int = Depends(is_authenticated),
+        session: AsyncSession = Depends(get_async_session)) -> Response:
+
+    user = await get_user_or_404(current_user_id, session)
+
+    if not user or not password_hash_is_valid(current_password, user.password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail='Invalid credentials',
+            headers={'WWW-Authenticate': 'Bearer'},
+        )
+
+    if not password_format_is_valid(new_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail='Invalid password format',
+        )
+
+    user.password = hash_password(new_password)
+
+    await session.commit()
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get('/users/{id}', response_model=BriefUserSchema)

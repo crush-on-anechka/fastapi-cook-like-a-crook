@@ -64,20 +64,16 @@ class BriefRecipeSchema(BaseModel):
     cooking_time: int
 
 
-class DetailedRecipeSchema(BaseModel):
-    id: int
-    name: str
+class DetailedRecipeSchema(BriefRecipeSchema):
     text: str
     pub_date: str
     author: BriefUserSchema
-    cooking_time: int
-    image: str
     tags: list[TagSchema]
     ingredients: list[IngredientWithAmountSchema]
     is_favorited: bool
     is_in_shopping_cart: bool
 
-    @field_validator("tags")
+    @field_validator('tags')
     @classmethod
     def validate_tags(cls, value, info: ValidationInfo):
         if not value:
