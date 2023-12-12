@@ -191,9 +191,11 @@ async def get_current_user_info(
 @router.get('/users/subscriptions', response_model=list[DetailedUserSchema])
 async def get_subscriptions(
     current_user_id: int = Depends(is_authenticated),
+    recipes_limit: int = Query(None, title='Recipes limit'),
         session: AsyncSession = Depends(get_async_session)) -> JSONResponse:
 
-    subs_result = await get_user_subscriptions(current_user_id, session)
+    subs_result = await get_user_subscriptions(
+        current_user_id, session, recipes_limit)
 
     subscriptions = [
         serialize_user_with_recipes(user, user.recipes) for user in subs_result
@@ -568,7 +570,8 @@ async def delete_from_shopping_cart(
 @router.post('/users/{id}/subscribe', response_model=DetailedUserSchema)
 async def subscribe(id: int = Path(..., title='User ID'),
                     current_user_id: int = Depends(is_authenticated),
-                    session: AsyncSession = Depends(get_async_session)
+                    recipes_limit: int = Query(None, title='Recipes limit'),
+                    session: AsyncSession = Depends(get_async_session),
                     ) -> JSONResponse:
 
     followed_user = await get_user_or_404(id, session)

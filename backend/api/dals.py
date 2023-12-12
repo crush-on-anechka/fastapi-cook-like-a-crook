@@ -84,9 +84,13 @@ async def get_recipe_or_404(
 
 
 async def get_recipes_by_user_id(
-        user_id: int, session: AsyncSession) -> list[RecipeModel]:
+    user_id: int, session: AsyncSession, recipes_limit: Optional[int]
+        ) -> list[RecipeModel]:
     recipes_result = await session.execute(
-        select(RecipeModel).where(RecipeModel.author == user_id))
+        select(RecipeModel)
+        .where(RecipeModel.author == user_id)
+        .limit(recipes_limit) if recipes_limit is not None else None
+    )
 
     recipes = recipes_result.scalars().all()
 
@@ -258,14 +262,17 @@ async def get_single_recipe_from_db(
     return recipe_with_user
 
 
-async def get_user_subscriptions(current_user_id, session):
+async def get_user_subscriptions(current_user_id, session, recipes_limit):
     stmt = select(UserModel).join(
         subscription,
         and_(
             UserModel.id == subscription.c.followed_user_id,
             subscription.c.user_id == current_user_id
         )
-    ).options(selectinload(UserModel.recipes))
+    ).options(
+        selectinload(UserModel.recipes)
+        .limit(recipes_limit) if recipes_limit is not None else None
+    )
 
     result = await session.execute(stmt)
     users_with_subscriptions = result.scalars().all()

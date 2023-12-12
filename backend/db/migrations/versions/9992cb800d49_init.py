@@ -63,6 +63,9 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['author'], ['users.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
+    op.execute(
+        sa.text("CREATE INDEX idx_ordered_recipes ON recipes (pub_date DESC)")
+    )
     op.create_table('amounts',
     sa.Column('recipe_id', sa.Integer(), nullable=True),
     sa.Column('ingredient_id', sa.Integer(), nullable=True),
@@ -91,7 +94,7 @@ def upgrade() -> None:
     sa.Column('followed_user_id', sa.Integer(), nullable=True),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['followed_user_id'], ['users.id'], ondelete='CASCADE'),
-    sa.UniqueConstraint('user_id', 'followed_user_id', name='subscription')
+    sa.UniqueConstraint('user_id', 'followed_user_id', name='unique_subscription')
     )
     op.create_table('shopping_cart',
     sa.Column('user_id', sa.Integer(), nullable=True),
@@ -109,8 +112,9 @@ def downgrade() -> None:
     op.drop_table('recipe_tag_association')
     op.drop_table('subscriptions')
     op.drop_table('favorite')
-    op.drop_table('amount')
+    op.drop_table('amounts')
     op.drop_table('recipes')
+    op.drop_index("idx_ordered_recipes", table_name="recipes")
     op.drop_table('users')
     op.drop_table('tags')
     op.drop_index('name_index', table_name='ingredients')

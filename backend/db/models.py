@@ -119,6 +119,10 @@ class RecipeModel(Base):
     author_relation = relationship(
         'UserModel', back_populates='recipes', lazy='selectin')
 
+    __table_args__ = {
+        'order_by': ('pub_date DESC')
+    }
+
 
 class AmountModel(Base):
     __tablename__ = 'amounts'
