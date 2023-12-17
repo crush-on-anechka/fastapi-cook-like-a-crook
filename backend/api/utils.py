@@ -22,7 +22,6 @@ def get_pagination_links(page: int, limit: int, total_items: int) -> dict:
 
 
 def handle_validation_error(err: ValidationError, error_message: str) -> None:
-
     raise HTTPException(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         detail=error_message,

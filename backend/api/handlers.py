@@ -150,7 +150,7 @@ async def get_token(
     password: str = Form(),
         session: AsyncSession = Depends(get_async_session)) -> JSONResponse:
     user = await get_user_by_email_for_auth(username, session)
-    if not user or not password_is_valid(password, user.password):
+    if not user or not password_hash_is_valid(password, user.password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail='Invalid credentials',
@@ -198,7 +198,9 @@ async def get_subscriptions(
         current_user_id, session, recipes_limit)
 
     subscriptions = [
-        serialize_user_with_recipes(user, user.recipes) for user in subs_result
+        serialize_user_with_recipes(
+            user, user.recipes[:recipes_limit], recipes_count)
+        for user, recipes_count in subs_result
     ]
 
     return JSONResponse(content=subscriptions, status_code=status.HTTP_200_OK)
@@ -585,9 +587,11 @@ async def subscribe(id: int = Path(..., title='User ID'),
     await session.execute(subscription.insert().values(
         user_id=current_user_id, followed_user_id=followed_user.id))
 
-    recipes = await get_recipes_by_user_id(followed_user.id, session)
+    recipes, recipes_count = await get_recipes_by_user_id(
+        followed_user.id, session, recipes_limit)
 
-    user_data: dict = serialize_user_with_recipes(followed_user, recipes)
+    user_data: dict = serialize_user_with_recipes(
+        followed_user, recipes, recipes_count)
 
     await session.commit()
 

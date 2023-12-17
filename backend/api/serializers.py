@@ -28,13 +28,13 @@ def serialize_user(user) -> dict:
     return user_data
 
 
-def serialize_user_with_recipes(user, recipes) -> dict:
+def serialize_user_with_recipes(user, recipes, recipes_count) -> dict:
     try:
         user_data = DetailedUserSchema(
                 **{
                     **user.__dict__,
                     'recipes': [r.__dict__ for r in recipes],
-                    'recipes_count': len(recipes)
+                    'recipes_count': recipes_count
                 }
             ).dict()
 

@@ -1,7 +1,7 @@
 from typing import Optional
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, case, delete, exists, literal, select
+from sqlalchemy import and_, case, delete, exists, literal, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -85,16 +85,30 @@ async def get_recipe_or_404(
 
 async def get_recipes_by_user_id(
     user_id: int, session: AsyncSession, recipes_limit: Optional[int]
-        ) -> list[RecipeModel]:
-    recipes_result = await session.execute(
+        ) -> tuple[list[RecipeModel], int]:
+
+    count_query = (
+        select(func.count().label('recipe_count'))
+        .where(RecipeModel.author == user_id)
+    )
+
+    count_result = await session.execute(count_query)
+    recipes_count = count_result.scalar()
+
+    recipes_query = (
         select(RecipeModel)
         .where(RecipeModel.author == user_id)
-        .limit(recipes_limit) if recipes_limit is not None else None
+        .order_by(RecipeModel.pub_date.desc())
     )
+
+    if recipes_limit is not None:
+        recipes_query = recipes_query.limit(recipes_limit)
+
+    recipes_result = await session.execute(recipes_query)
 
     recipes = recipes_result.scalars().all()
 
-    return recipes
+    return recipes, recipes_count
 
 
 async def get_user_or_404(
@@ -157,7 +171,7 @@ async def delete_tags(
 
 
 async def get_recipes_from_db(
-    session,
+    session: AsyncSession,
     current_user_id,
     author_id,
     tags,
@@ -231,7 +245,7 @@ async def get_recipes_from_db(
 
 
 async def get_single_recipe_from_db(
-    id, session, current_user_id
+    id, session: AsyncSession, current_user_id
         ) -> tuple[RecipeModel, UserModel, bool, bool]:
 
     recipe_query = (
@@ -262,19 +276,28 @@ async def get_single_recipe_from_db(
     return recipe_with_user
 
 
-async def get_user_subscriptions(current_user_id, session, recipes_limit):
-    stmt = select(UserModel).join(
-        subscription,
-        and_(
-            UserModel.id == subscription.c.followed_user_id,
-            subscription.c.user_id == current_user_id
+async def get_user_subscriptions(
+    current_user_id: int,
+    session: AsyncSession,
+        recipes_limit: Optional[int]):
+
+    query = (
+        select(UserModel).join(
+            subscription,
+            and_(
+                UserModel.id == subscription.c.followed_user_id,
+                subscription.c.user_id == current_user_id
+            )
         )
-    ).options(
-        selectinload(UserModel.recipes)
-        .limit(recipes_limit) if recipes_limit is not None else None
+        .add_columns(
+            func.count(
+                case((RecipeModel.author == UserModel.id, RecipeModel.id)))
+            .label('recipes_count')
+        )
+        .group_by(UserModel.id)
     )
 
-    result = await session.execute(stmt)
-    users_with_subscriptions = result.scalars().all()
+    result = await session.execute(query)
+    users = result.fetchall()
 
-    return users_with_subscriptions
+    return users

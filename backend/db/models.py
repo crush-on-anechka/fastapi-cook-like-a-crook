@@ -63,7 +63,8 @@ class UserModel(Base):
     last_name = Column(String(150), nullable=False)
     is_subscribed = Column(Boolean(), default=False)
     recipes = relationship(
-        'RecipeModel', back_populates='author_relation', lazy='selectin')
+        'RecipeModel', back_populates='author_relation',
+        lazy='selectin', order_by='desc(RecipeModel.pub_date)')
 
 
 class IngredientModel(Base):
@@ -118,10 +119,6 @@ class RecipeModel(Base):
     image = Column(String, nullable=False)  # TODO: Store the image path or reference 'recipes/images/')
     author_relation = relationship(
         'UserModel', back_populates='recipes', lazy='selectin')
-
-    __table_args__ = {
-        'order_by': ('pub_date DESC')
-    }
 
 
 class AmountModel(Base):
