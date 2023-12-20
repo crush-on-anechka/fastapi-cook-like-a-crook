@@ -1,7 +1,7 @@
 from typing import Optional
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, case, delete, exists, literal, select, func
+from sqlalchemy import and_, case, delete, exists, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -21,6 +21,28 @@ async def get_amount(
     amount_instance = result.scalar()
 
     return amount_instance
+
+
+async def get_shopping_cart(session, user_id):
+
+    shopping_cart_subq = (
+        select(RecipeModel.id.label('recipe_id'))
+        .where(shopping_cart.c.recipe_id == RecipeModel.id,
+               shopping_cart.c.user_id == user_id)
+        .alias()
+    )
+
+    query = (
+        select(AmountModel)
+        .filter(exists().where(
+            shopping_cart_subq.c.recipe_id == RecipeModel.id))
+        .options(selectinload(AmountModel.ingredient))
+    )
+
+    result = await session.execute(query)
+    amounts = result.scalars().all()
+
+    return amounts
 
 
 async def recipe_tag_association_exists(session, tag_id, recipe_id) -> bool:

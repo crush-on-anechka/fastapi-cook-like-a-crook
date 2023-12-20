@@ -1,8 +1,9 @@
+import csv
 from datetime import datetime
 
 from fastapi import (APIRouter, Depends, Form, HTTPException, Path, Query,
                      status)
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,10 +23,11 @@ from .auth import (create_jwt, hash_password, is_authenticated,
                    password_format_is_valid, password_hash_is_valid)
 from .dals import (delete_amounts, delete_tags, get_amount, get_recipe_or_404,
                    get_recipes_by_user_id, get_recipes_from_db,
-                   get_single_recipe_from_db, get_user_by_email_for_auth,
-                   get_user_or_404, get_user_subscriptions,
-                   is_recipe_in_favorite, is_recipe_in_shopping_cart,
-                   is_subscribed, recipe_tag_association_exists)
+                   get_shopping_cart, get_single_recipe_from_db,
+                   get_user_by_email_for_auth, get_user_or_404,
+                   get_user_subscriptions, is_recipe_in_favorite,
+                   is_recipe_in_shopping_cart, is_subscribed,
+                   recipe_tag_association_exists)
 from .serializers import (serialize_favorite, serialize_ingredient,
                           serialize_ingredients_list, serialize_recipe,
                           serialize_recipes_list, serialize_shopping_cart,
@@ -390,6 +392,33 @@ async def create_recipe(
 
     return JSONResponse(
         content=recipe_data, status_code=status.HTTP_201_CREATED)
+
+
+@router.get('/recipes/download_shopping_cart')
+async def download_shopping_cart(
+    current_user_id: int = Depends(is_authenticated),
+    session: AsyncSession = Depends(get_async_session)
+        ) -> FileResponse:
+    amounts = await get_shopping_cart(session, current_user_id)
+
+    shopping_cart, measure_units = {}, {}
+
+    for a in amounts:
+        ingredient = a.ingredient.name
+        amount = a.amount
+        measure_units[ingredient] = a.ingredient.measurement_unit
+        shopping_cart[ingredient] = shopping_cart.get(ingredient, 0) + amount
+
+    filename = 'shopping_cart.csv'
+
+    with open(filename, 'w') as file:
+        writer = csv.writer(file)
+        writer.writerow(['Список покупок:'])
+        for ingredient, amount in shopping_cart.items():
+            unit = measure_units[ingredient]
+            writer.writerow([f'{ingredient} — {amount} {unit}'])
+
+    return FileResponse(filename, filename=filename)
 
 
 @router.patch('/recipes/{id}', response_model=DetailedRecipeSchema)
