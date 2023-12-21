@@ -16,7 +16,7 @@ from db.schemas import (BriefRecipeSchema, BriefUserSchema, CreateRecipeSchema,
                         DetailedUserSchema, IngredientSchema, TagSchema,
                         TokenSchema)
 from db.session import get_async_session
-from settings import PAGE_LIMIT
+from settings import DEFAULT_RECIPES_LIMIT, PAGE_LIMIT
 
 from .auth import (create_jwt, hash_password, is_authenticated,
                    password_format_is_valid, password_hash_is_valid)
@@ -192,11 +192,10 @@ async def get_current_user_info(
 @router.get('/users/subscriptions', response_model=list[DetailedUserSchema])
 async def get_subscriptions(
     current_user_id: int = Depends(is_authenticated),
-    recipes_limit: int = Query(None, title='Recipes limit'),
+    recipes_limit: int = Query(DEFAULT_RECIPES_LIMIT, title='Recipes limit'),
         session: AsyncSession = Depends(get_async_session)) -> JSONResponse:
 
-    subs_result = await get_user_subscriptions(
-        current_user_id, session, recipes_limit)
+    subs_result = await get_user_subscriptions(current_user_id, session)
 
     subscriptions = [
         serialize_user_with_recipes(
@@ -395,11 +394,10 @@ async def create_recipe(
 
 @router.get('/recipes/download_shopping_cart')
 async def download_shopping_cart(
-    # current_user_id: int = Depends(is_authenticated),
+    current_user_id: int = Depends(is_authenticated),
     session: AsyncSession = Depends(get_async_session)
         ) -> StreamingResponse:
-    # amounts = await get_shopping_cart(session, current_user_id)
-    amounts = await get_shopping_cart(session, 1)
+    amounts = await get_shopping_cart(session, current_user_id)
 
     shopping_cart, measure_units = {}, {}
 
@@ -600,11 +598,12 @@ async def delete_from_shopping_cart(
 
 
 @router.post('/users/{id}/subscribe', response_model=DetailedUserSchema)
-async def subscribe(id: int = Path(..., title='User ID'),
-                    current_user_id: int = Depends(is_authenticated),
-                    recipes_limit: int = Query(None, title='Recipes limit'),
-                    session: AsyncSession = Depends(get_async_session),
-                    ) -> JSONResponse:
+async def subscribe(
+    id: int = Path(..., title='User ID'),
+    current_user_id: int = Depends(is_authenticated),
+    recipes_limit: int = Query(DEFAULT_RECIPES_LIMIT, title='Recipes limit'),
+    session: AsyncSession = Depends(get_async_session),
+        ) -> JSONResponse:
 
     followed_user = await get_user_or_404(id, session)
 

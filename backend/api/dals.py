@@ -106,7 +106,7 @@ async def get_recipe_or_404(
 
 
 async def get_recipes_by_user_id(
-    user_id: int, session: AsyncSession, recipes_limit: Optional[int]
+    user_id: int, session: AsyncSession, recipes_limit: int
         ) -> tuple[list[RecipeModel], int]:
 
     count_query = (
@@ -121,10 +121,7 @@ async def get_recipes_by_user_id(
         select(RecipeModel)
         .where(RecipeModel.author == user_id)
         .order_by(RecipeModel.pub_date.desc())
-    )
-
-    if recipes_limit is not None:
-        recipes_query = recipes_query.limit(recipes_limit)
+    ).limit(recipes_limit)
 
     recipes_result = await session.execute(recipes_query)
 
@@ -300,8 +297,7 @@ async def get_single_recipe_from_db(
 
 async def get_user_subscriptions(
     current_user_id: int,
-    session: AsyncSession,
-        recipes_limit: Optional[int]):
+        session: AsyncSession):
 
     query = (
         select(UserModel).join(

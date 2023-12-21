@@ -16,6 +16,8 @@ POSTGRES_URL = (
     # 'postgresql+asyncpg://postgres:postgres@localhost:5432/alco_test_db'  # when using local db
 )
 
+DEFAULT_RECIPES_LIMIT = 6
+
 PAGE_LIMIT = 10
 
 MAX_PASSWORD_LEN = 150
