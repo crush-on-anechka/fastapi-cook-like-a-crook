@@ -1,9 +1,8 @@
-import csv
 from datetime import datetime
 
 from fastapi import (APIRouter, Depends, Form, HTTPException, Path, Query,
                      status)
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy import delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -396,10 +395,11 @@ async def create_recipe(
 
 @router.get('/recipes/download_shopping_cart')
 async def download_shopping_cart(
-    current_user_id: int = Depends(is_authenticated),
+    # current_user_id: int = Depends(is_authenticated),
     session: AsyncSession = Depends(get_async_session)
-        ) -> FileResponse:
-    amounts = await get_shopping_cart(session, current_user_id)
+        ) -> StreamingResponse:
+    # amounts = await get_shopping_cart(session, current_user_id)
+    amounts = await get_shopping_cart(session, 1)
 
     shopping_cart, measure_units = {}, {}
 
@@ -409,16 +409,17 @@ async def download_shopping_cart(
         measure_units[ingredient] = a.ingredient.measurement_unit
         shopping_cart[ingredient] = shopping_cart.get(ingredient, 0) + amount
 
-    filename = 'shopping_cart.csv'
+    response = 'Список покупок:\n'
 
-    with open(filename, 'w') as file:
-        writer = csv.writer(file)
-        writer.writerow(['Список покупок:'])
-        for ingredient, amount in shopping_cart.items():
-            unit = measure_units[ingredient]
-            writer.writerow([f'{ingredient} — {amount} {unit}'])
+    for ingredient, amount in shopping_cart.items():
+        unit = measure_units[ingredient]
+        response += f'{ingredient} — {amount} {unit}\n'
 
-    return FileResponse(filename, filename=filename)
+    return StreamingResponse(
+        iter([response]),
+        media_type='text/csv',
+        headers={'Content-Disposition':
+                 'attachment;filename=shopping_cart.csv'})
 
 
 @router.patch('/recipes/{id}', response_model=DetailedRecipeSchema)
