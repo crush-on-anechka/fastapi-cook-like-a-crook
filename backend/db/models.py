@@ -25,7 +25,8 @@ subscription = Table(
     Column('followed_user_id',
            Integer,
            ForeignKey('users.id', ondelete='CASCADE')),
-    UniqueConstraint('user_id', 'followed_user_id', name='unique_subscription')
+    UniqueConstraint('user_id', 'followed_user_id', name='unique_subscription'),
+    CheckConstraint('user_id != followed_user_id', name='check_self_follow')
 )
 
 

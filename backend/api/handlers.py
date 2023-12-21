@@ -18,8 +18,9 @@ from db.schemas import (BriefRecipeSchema, BriefUserSchema, CreateRecipeSchema,
 from db.session import get_async_session
 from settings import DEFAULT_RECIPES_LIMIT, PAGE_LIMIT
 
-from .auth import (create_jwt, hash_password, is_authenticated,
-                   password_format_is_valid, password_hash_is_valid)
+from .auth import (create_jwt, get_user_id_from_token_or_none, hash_password,
+                   is_authenticated, password_format_is_valid,
+                   password_hash_is_valid)
 from .dals import (delete_amounts, delete_tags, get_amount, get_recipe_or_404,
                    get_recipes_by_user_id, get_recipes_from_db,
                    get_shopping_cart, get_single_recipe_from_db,
@@ -312,8 +313,12 @@ async def get_tag_by_id(id: int = Path(..., title='Tag ID'),
 
 @router.get('/ingredients', response_model=list[IngredientSchema])
 async def get_ingredients_list(
+        name: str = Query(None, title='Name'),
         session: AsyncSession = Depends(get_async_session)) -> JSONResponse:
-    ingredients_result = await session.execute(select(IngredientModel))
+    query = select(IngredientModel).order_by(IngredientModel.name)
+    if name:
+        query = query.where(IngredientModel.name.startswith(name))
+    ingredients_result = await session.execute(query)
     ingredients = ingredients_result.scalars().all()
     ingredients_data: list[dict] = serialize_ingredients_list(ingredients)
 
@@ -343,7 +348,7 @@ async def get_ingredient_by_id(
 
 @router.get('/recipes', response_model=list[DetailedRecipeSchema])
 async def get_recipes_list(
-    current_user_id: int = Depends(is_authenticated),
+    current_user_id: int = Depends(get_user_id_from_token_or_none),
     author: int = Query(None, title='Author'),
     tags: list[str] = Query(None, title='Tags'),
     is_favorited: BoolOptions = Query(
@@ -352,12 +357,12 @@ async def get_recipes_list(
         BoolOptions.false, title='Is in shopping cart'),
     session: AsyncSession = Depends(get_async_session)
         ) -> JSONResponse:
+
     recipes = await get_recipes_from_db(
         session, current_user_id,
         author, tags,
         is_favorited, is_in_shopping_cart
     )
-
     recipes_data = await serialize_recipes_list(recipes)
 
     return JSONResponse(content=recipes_data, status_code=status.HTTP_200_OK)
@@ -453,10 +458,11 @@ async def update_recipe(
 
 
 @router.get('/recipes/{id}', response_model=DetailedRecipeSchema)
-async def get_recipe_by_id(id: int = Path(..., title='Tag ID'),
-                           current_user_id: int = Depends(is_authenticated),
-                           session: AsyncSession = Depends(get_async_session)
-                           ) -> JSONResponse:
+async def get_recipe_by_id(
+    id: int = Path(..., title='Tag ID'),
+    current_user_id: int = Depends(get_user_id_from_token_or_none),
+    session: AsyncSession = Depends(get_async_session)
+        ) -> JSONResponse:
     recipe_with_user = (
         await get_single_recipe_from_db(id, session, current_user_id))
 

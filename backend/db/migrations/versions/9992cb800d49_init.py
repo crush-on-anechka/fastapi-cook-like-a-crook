@@ -91,7 +91,8 @@ def upgrade() -> None:
     sa.Column('followed_user_id', sa.Integer(), nullable=True),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['followed_user_id'], ['users.id'], ondelete='CASCADE'),
-    sa.UniqueConstraint('user_id', 'followed_user_id', name='unique_subscription')
+    sa.UniqueConstraint('user_id', 'followed_user_id', name='unique_subscription'),
+    sa.CheckConstraint('user_id != followed_user_id', name='check_self_follow')
     )
     op.create_table('shopping_cart',
     sa.Column('user_id', sa.Integer(), nullable=True),

@@ -191,7 +191,7 @@ async def delete_tags(
 
 async def get_recipes_from_db(
     session: AsyncSession,
-    current_user_id,
+    current_user_id: Optional[int],
     author_id,
     tags,
     is_favorited_only,

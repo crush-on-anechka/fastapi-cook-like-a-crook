@@ -33,6 +33,15 @@ def is_authenticated(token: str = Depends(oauth2_scheme)) -> Optional[int]:
     return verify_jwt(token)
 
 
+def get_user_id_from_token_or_none(
+        token: str = Depends(oauth2_scheme)) -> Optional[int]:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload.get('sub')
+    except PyJWTError:
+        return None
+
+
 def password_format_is_valid(password: str) -> bool:
     return password and len(password) <= MAX_PASSWORD_LEN
 
