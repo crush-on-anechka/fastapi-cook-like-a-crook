@@ -1,9 +1,10 @@
+import re
 from datetime import datetime
 
 from sqlalchemy import (Boolean, CheckConstraint, Column, DateTime, ForeignKey,
                         Index, Integer, SmallInteger, String, Table, Text,
                         UniqueConstraint)
-from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.orm import declarative_base, relationship, validates
 
 Base = declarative_base()
 
@@ -54,18 +55,26 @@ class UserModel(Base):
     id = Column(Integer, autoincrement=True, primary_key=True)
     email = Column(String(), nullable=False)
     password = Column(String(150), nullable=False)
-    username = Column(
-        String(150),
-        # CheckConstraint(
-        #     'username ~ "^[\\w.@+-]+$"', name='check_valid_username'),
-        unique=True,
-        nullable=False)
+    username = Column(String(150), unique=True, nullable=False)
     first_name = Column(String(150), nullable=False)
     last_name = Column(String(150), nullable=False)
     is_subscribed = Column(Boolean(), default=False)
     recipes = relationship(
         'RecipeModel', back_populates='author_relation',
         lazy='selectin', order_by='desc(RecipeModel.pub_date)')
+
+    @validates('username')
+    def validate_username(self, key, username):
+        if not re.match('^[\\w.@+-]+$', username):
+            raise ValueError('username must consist of alphanumeric '
+                             'characters, ".", "@", "+" or "-" only')
+        return username
+
+    @validates('email')
+    def validate_email(self, key, email):
+        if not ('@' in email and '.' in email):
+            raise ValueError('invalid email')
+        return email
 
 
 class IngredientModel(Base):
@@ -82,18 +91,23 @@ class TagModel(Base):
 
     id = Column(Integer, autoincrement=True, primary_key=True)
     name = Column(String(200), unique=True)
-    slug = Column(
-        String(200),
-        # CheckConstraint(
-        #     'slug ~ "^[-a-zA-Z0-9_]+$" COLLATE "C"', name='check_valid_slug'),
-        unique=True)
-    color = Column(
-        String(7),
-        # CheckConstraint(
-        #     'color ~ "^#([a-f0-9]{6})$"', name='check_valid_hex_color'),
-        unique=True)
+    slug = Column(String(200), unique=True)
+    color = Column(String(7), unique=True)
     recipes = relationship(
         'RecipeModel', secondary=recipe_tag_association, back_populates='tags')
+
+    @validates('slug')
+    def validate_slug(self, key, slug):
+        if not re.match('^[-a-zA-Z0-9_]+$', slug):
+            raise ValueError('slug must consist of symbols "a-z", "A-Z", '
+                             '"0-9", "_" or "-" only')
+        return slug
+
+    @validates('color')
+    def validate_color(self, key, color):
+        if not re.match('^#([a-f0-9]{6})$', color):
+            raise ValueError('invalid HEX color')
+        return color
 
 
 class RecipeModel(Base):
