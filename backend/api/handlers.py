@@ -1,8 +1,11 @@
+import base64
 from datetime import datetime
+from io import BytesIO
 
 from fastapi import (APIRouter, Depends, Form, HTTPException, Path, Query,
                      status)
 from fastapi.responses import JSONResponse, StreamingResponse
+from PIL import Image
 from sqlalchemy import delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -97,6 +100,23 @@ class RecipeUtility:
             cur_recipe.tags.append(tag)
 
     @staticmethod
+    async def _handle_image(base64str):
+        '''
+        Gets image encoded as base64-string from frontend, removes prefix,
+        decodes it to binary image data, creates a Pillow Image object, stores
+        its hash (primarily to shorten it) as image_path in DB and returns it.
+        '''
+        prefix, imgstr = base64str.split(';base64,')
+        _, image_format = prefix.split('/')
+
+        image_data = base64.b64decode(imgstr)
+        image = Image.open(BytesIO(image_data))
+        image_path = f'media/{hash(image_data)}.{image_format}'
+        image.save(image_path)
+
+        return image_path
+
+    @staticmethod
     async def _update_recipe_fields(
         cur_recipe: RecipeModel,
         recipe_data: DetailedRecipeSchema,
@@ -107,7 +127,10 @@ class RecipeUtility:
         cur_recipe.name = recipe_data.get('name')
         cur_recipe.text = recipe_data.get('text')
         cur_recipe.cooking_time = recipe_data.get('cooking_time')
-        cur_recipe.image = recipe_data.get('image')
+
+        uploaded_image = recipe_data.get('image')
+        image_path = await RecipeUtility._handle_image(uploaded_image)
+        cur_recipe.image = image_path
 
         await RecipeUtility._add_or_update_ingredients(
             ingredients_data, ingredient_ids, cur_recipe, recipe_data, session)
